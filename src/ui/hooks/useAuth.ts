@@ -30,7 +30,7 @@ async function errorMessage(response: Response) {
 
 export function useAuthState(): AuthState {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,12 +44,19 @@ export function useAuthState(): AuthState {
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) return;
-
     let cancelled = false;
+
+    if (!token) {
+      queueMicrotask(() => {
+        if (!cancelled) setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     queueMicrotask(() => {
       if (cancelled) return;
-      setLoading(true);
       void fetch("/api/auth/me", {
         headers: { authorization: `Bearer ${token}` },
       })

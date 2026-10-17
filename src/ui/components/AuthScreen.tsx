@@ -1,32 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import SignIn from "@/ui/components/SignIn";
 import SignUp from "@/ui/components/SignUp";
 import { useAuth } from "@/ui/context/auth";
 
 export default function AuthScreen() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
-  if (loading) {
-    return <p className="text-sm text-zinc-500">Loading...</p>;
-  }
+  useEffect(() => {
+    if (!loading && user) router.replace("/chat");
+  }, [loading, user, router]);
 
-  if (user) {
-    return (
-      <div className="flex w-full max-w-sm flex-col gap-4">
-        <h1 className="text-2xl font-semibold">Signed in</h1>
-        <p>You are {user.username}.</p>
-        <button
-          type="button"
-          onClick={signOut}
-          className="h-10 rounded-full bg-foreground text-background"
-        >
-          Sign out
-        </button>
-      </div>
-    );
+  if (loading || user) {
+    return <p className="text-sm text-zinc-500">Loading...</p>;
   }
 
   if (mode === "signup") {
