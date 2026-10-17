@@ -88,7 +88,7 @@ The app listens on port 3000.
 ## With more time
 
 - Use openrouter or something that would act really fast.
-- Embed the chat messages.
+- Embed the chat messages. Right now all memories get passed to the agent and using embeddings and vector search we can limit the context we pass to the chat.
 - Configure oauth instead of username signup.
 - Create relationships between users, add friends, delete friends etc.
 - Websockets for instant message updates instead of 2 second long polling.
