@@ -152,14 +152,32 @@ export class ChatService {
         await this.db.chatMember.create({ data: { chatId, userId: assistant.id } });
       }
 
+      const people = await this.db.chatMember.findMany({
+        where: { chatId, user: { kind: "HUMAN" } },
+        select: { user: { select: { id: true, username: true, name: true } } },
+      });
+      const memories = await this.db.memory.findMany({
+        where: { userId: { in: people.map((member) => member.user.id) } },
+        include: { user: { select: { name: true } } },
+      });
       const history = await this.db.message.findMany({
         where: { chatId },
         orderBy: { createdAt: "asc" },
-        include: { author: { select: { name: true, kind: true } } },
+        include: { author: { select: { name: true, username: true, kind: true } } },
       });
       const reply = await this.assistant.consider(
         history.map((message) => ({
           authorName: message.author.name,
+          kind: message.author.kind,
+          body: message.body,
+        })),
+        memories.map((memory) => ({ name: memory.user.name, content: memory.content })),
+      );
+      await this.assistant.remember(
+        people.map((member) => member.user),
+        history.map((message) => ({
+          username: message.author.username,
+          name: message.author.name,
           kind: message.author.kind,
           body: message.body,
         })),

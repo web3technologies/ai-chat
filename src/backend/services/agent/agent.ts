@@ -2,6 +2,24 @@ import "server-only";
 import OpenAI from "openai";
 import prisma from "@/backend/db/prisma/client";
 
+export type KnownFact = {
+  name: string;
+  content: string;
+};
+
+type ChatPerson = {
+  id: string;
+  username: string | null;
+  name: string;
+};
+
+type RememberTurn = {
+  username: string | null;
+  name: string;
+  kind: "HUMAN" | "AGENT";
+  body: string;
+};
+
 export type TranscriptTurn = {
   authorName: string;
   kind: "HUMAN" | "AGENT";
@@ -11,7 +29,13 @@ export type TranscriptTurn = {
 const instructions = `You are a member of this chat named Agent.
 Read the transcript and reply only when you can actually help.
 Stay quiet for greetings, small talk, and messages meant for the other people.
+Known facts are things you already know about these people, including from other chats. Use them when they help.
 When you stay quiet, set reply to null. Otherwise set reply to the message you would send.`;
+
+const memoryInstructions = `Read the transcript and record only stable facts about the human participants.
+Keep where they live, what they like, and plans they stated.
+Skip greetings, jokes, one-off questions, and anything about the agent.
+Use the username in parentheses. Return an empty list when nothing durable was said.`;
 
 export class Agent {
   constructor(private readonly db: typeof prisma) {}
@@ -24,16 +48,23 @@ export class Agent {
     });
   }
 
-  async consider(transcript: TranscriptTurn[]): Promise<string | null> {
+  async consider(transcript: TranscriptTurn[], memories: KnownFact[]): Promise<string | null> {
     if (!process.env.OPENAI_API_KEY) {
       console.log("[agent] skipped: OPENAI_API_KEY is not set");
       return null;
     }
 
     console.log(`[agent] considering ${transcript.length} messages`);
+    for (const memory of memories) {
+      console.log(`[agent] memory ${memory.name}: ${memory.content}`);
+    }
     for (const turn of transcript) {
       console.log(`[agent] ${turn.authorName} (${turn.kind}): ${turn.body}`);
     }
+
+    const facts = memories.length
+      ? memories.map((memory) => `- ${memory.name}: ${memory.content}`).join("\n")
+      : "None";
 
     try {
       const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -43,9 +74,9 @@ export class Agent {
           { role: "system", content: instructions },
           {
             role: "user",
-            content: transcript
+            content: `Known facts:\n${facts}\n\nTranscript:\n${transcript
               .map((turn) => `${turn.authorName} (${turn.kind}): ${turn.body}`)
-              .join("\n"),
+              .join("\n")}`,
           },
         ],
         response_format: {
@@ -82,6 +113,89 @@ export class Agent {
     } catch (error) {
       console.error("[agent] request failed", error);
       return null;
+    }
+  }
+
+  async remember(people: ChatPerson[], transcript: RememberTurn[]) {
+    if (!process.env.OPENAI_API_KEY) return;
+
+    const humans = people.filter((person) => person.username);
+    if (humans.length === 0) return;
+
+    try {
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: memoryInstructions },
+          {
+            role: "user",
+            content: `People:\n${humans.map((person) => `${person.name} (${person.username})`).join("\n")}\n\nTranscript:\n${transcript
+              .map((turn) => `${turn.name} (${turn.username ?? turn.kind}): ${turn.body}`)
+              .join("\n")}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "agent_memories",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                memories: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      username: { type: "string" },
+                      content: { type: "string" },
+                    },
+                    required: ["username", "content"],
+                  },
+                },
+              },
+              required: ["memories"],
+            },
+          },
+        },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        console.log("[agent] memory: nothing new");
+        return;
+      }
+
+      const parsed = JSON.parse(content) as { memories?: { username?: unknown; content?: unknown }[] };
+      const existing = await this.db.memory.findMany({
+        where: { userId: { in: humans.map((person) => person.id) } },
+        select: { userId: true, content: true },
+      });
+      const known = new Set(existing.map((memory) => `${memory.userId}:${memory.content.trim().toLowerCase()}`));
+      let stored = 0;
+
+      for (const memory of parsed.memories ?? []) {
+        if (typeof memory.username !== "string" || typeof memory.content !== "string") continue;
+        const contentText = memory.content.trim();
+        if (!contentText) continue;
+        const person = humans.find(
+          (candidate) => candidate.username?.toLowerCase() === memory.username?.toString().toLowerCase(),
+        );
+        if (!person) continue;
+        const key = `${person.id}:${contentText.toLowerCase()}`;
+        if (known.has(key)) continue;
+        known.add(key);
+        await this.db.memory.create({ data: { userId: person.id, content: contentText } });
+        stored += 1;
+        console.log(`[agent] memory: ${person.name}: ${contentText}`);
+      }
+
+      if (stored === 0) console.log("[agent] memory: nothing new");
+    } catch (error) {
+      console.error("[agent] memory request failed", error);
     }
   }
 }
