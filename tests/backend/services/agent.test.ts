@@ -68,6 +68,19 @@ describe("Agent", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("drops a reply that is JSON instead of a sentence", async () => {
+    create.mockResolvedValue(
+      completion(
+        JSON.stringify({
+          reply: '{"type":"object","properties":{"reply":"Great! Enjoy your meal at Pluckers at 6 PM!"}}',
+        }),
+      ),
+    );
+    await expect(
+      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what time?" }], []),
+    ).resolves.toBeNull();
+  });
+
   it("returns a trimmed reply", async () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "  68  " })));
     await expect(

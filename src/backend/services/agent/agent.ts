@@ -76,9 +76,9 @@ export class Agent {
         return null;
       }
       const parsed = JSON.parse(content) as { reply?: unknown };
-      const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+      const reply = plainReply(parsed.reply);
       console.log("parsed", parsed);
-      if (!reply || reply.toLowerCase() === "null") {
+      if (!reply) {
         console.log("[agent] decision: stay quiet");
         return null;
       }
@@ -172,6 +172,15 @@ export class Agent {
       console.error("[agent] memory request failed", error);
     }
   }
+}
+
+function plainReply(value: unknown) {
+  if (typeof value !== "string") return null;
+  const reply = value.trim();
+  if (!reply || reply.toLowerCase() === "null" || reply.startsWith("{") || reply.startsWith("[")) {
+    return null;
+  }
+  return reply;
 }
 
 export const agent = new Agent(prisma);
