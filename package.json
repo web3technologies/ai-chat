@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "postinstall": "prisma generate",
+    "postinstall": "sh -c 'if [ -f src/backend/db/prisma/schema.prisma ]; then prisma generate; fi'",
     "db:generate": "prisma generate",
     "db:migrate": "prisma generate && prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

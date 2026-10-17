@@ -18,8 +18,18 @@ const globalForPrisma = global as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
 };
 
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
+function prismaClient() {
+  globalForPrisma.prisma ??= createPrismaClient();
+  return globalForPrisma.prisma;
+}
 
-globalForPrisma.prisma = prisma;
+// Created on first use so `next build` can load routes before DATABASE_URL exists.
+const prisma = new Proxy({} as ReturnType<typeof createPrismaClient>, {
+  get(_target, property) {
+    const client = prismaClient();
+    const value = Reflect.get(client, property, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
 
 export default prisma;

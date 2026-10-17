@@ -14,6 +14,11 @@
 
 Copy `.env.example` to `.env` and set `OPENAI_API_KEY`.
 
+Sign in as `sam` with password `password`. jordan and alex use the same password.
+
+> [!IMPORTANT]
+> **Address the agent by name to get a reply.** It stays quiet during small talk. Try `Agent, where should we go get food?`
+
 ### Development
 
 Start Postgres, then run the app locally:
@@ -29,20 +34,17 @@ pnpm dev
 
 `pnpm install` also generates the Prisma client. `pnpm db:generate` is there in case that step was skipped. The client is written to `src/backend/db/prisma/generated` and is not committed.
 
-`pnpm db:seed` creates sam, jordan, and alex. Sign in as `sam` with password `password`. jordan and alex use the same password.
-
-> [!IMPORTANT]
-> **Address the agent by name to get a reply.** It stays quiet during small talk. Try `Agent, where should we go get food?`
+`pnpm db:seed` creates sam, jordan, and alex.
 
 ### Docker Compose
 
-Build and run Postgres and the app together. The container applies migrations on startup.
+Start Postgres and the app. The container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above.
 
 ```bash
 docker compose up --build
 ```
 
-The app listens on port 3000. Add `OPENAI_API_KEY` to the `backend` service environment in `docker-compose.yaml` if the agent should reply inside that container.
+The app listens on port 3000.
 
 ## Architecture
 
@@ -73,6 +75,7 @@ The app listens on port 3000. Add `OPENAI_API_KEY` to the `backend` service envi
 6. No email verification. Seeded users share one password.
 7. If the model call fails or the key is missing, the human message still stays saved.
 8. The token lives in localStorage, so the API is Authorization: Bearer, not a cookie.
+9. Chat messages are sent to the model as written. There is no prompt-injection handling.
 
 ## Tradeoffs
 
