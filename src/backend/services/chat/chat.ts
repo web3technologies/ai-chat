@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@/backend/db/prisma/generated/client";
 import prisma from "@/backend/db/prisma/client";
+import { Agent, agent } from "@/backend/services/agent/agent";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
 import {
   chatKind,
@@ -17,6 +18,7 @@ export class ChatService {
   constructor(
     private readonly db: typeof prisma,
     private readonly tokens: AuthToken,
+    private readonly assistant: Agent,
   ) {}
 
   async list(request: Request): Promise<{ ok: true; chats: ChatSummary[] } | ChatFailure> {
@@ -44,6 +46,9 @@ export class ChatService {
     const input = await this.createInput(request, userId);
     if (!input.ok) return input;
 
+    const assistant = await this.assistant.user();
+    const memberIds = [...input.memberIds, assistant.id];
+
     const result = await this.db.$transaction(async (tx) => {
       if (input.kind === "DM") {
         const existing = await tx.chat.findFirst({
@@ -52,19 +57,28 @@ export class ChatService {
             AND: [
               { members: { some: { userId } } },
               { members: { some: { userId: input.memberIds[1] } } },
-              { members: { every: { userId: { in: input.memberIds } } } },
+              { members: { every: { userId: { in: memberIds } } } },
             ],
           },
           include: detailInclude,
         });
-        if (existing) return { chat: existing, created: false };
+        if (existing) {
+          const hasAgent = existing.members.some((member) => member.userId === assistant.id);
+          if (hasAgent) return { chat: existing, created: false };
+          await tx.chatMember.create({ data: { chatId: existing.id, userId: assistant.id } });
+          const chat = await tx.chat.findUniqueOrThrow({
+            where: { id: existing.id },
+            include: detailInclude,
+          });
+          return { chat, created: false };
+        }
       }
 
       const chat = await tx.chat.create({
         data: {
           kind: input.kind,
           name: input.kind === "GROUP" ? input.name : null,
-          members: { create: input.memberIds.map((memberId) => ({ userId: memberId })) },
+          members: { create: memberIds.map((memberId) => ({ userId: memberId })) },
         },
         include: detailInclude,
       });
@@ -90,7 +104,7 @@ export class ChatService {
   async send(
     request: Request,
     chatId: string,
-  ): Promise<{ ok: true; message: ChatMessageView } | ChatFailure> {
+  ): Promise<{ ok: true; message: ChatMessageView; agentMessage: ChatMessageView | null } | ChatFailure> {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return { ok: false, reason: "unauthorized" };
 
@@ -114,7 +128,9 @@ export class ChatService {
         });
         return created;
       });
-      return { ok: true, message: this.toMessage(message) };
+
+      const agentMessage = await this.agentReply(chatId);
+      return { ok: true, message: this.toMessage(message), agentMessage };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -123,6 +139,44 @@ export class ChatService {
         return { ok: false, reason: "not_found" };
       }
       throw error;
+    }
+  }
+
+  private async agentReply(chatId: string): Promise<ChatMessageView | null> {
+    try {
+      const assistant = await this.assistant.user();
+      const membership = await this.db.chatMember.findUnique({
+        where: { chatId_userId: { chatId, userId: assistant.id } },
+      });
+      if (!membership) {
+        await this.db.chatMember.create({ data: { chatId, userId: assistant.id } });
+      }
+
+      const history = await this.db.message.findMany({
+        where: { chatId },
+        orderBy: { createdAt: "asc" },
+        include: { author: { select: { name: true, kind: true } } },
+      });
+      const reply = await this.assistant.consider(
+        history.map((message) => ({
+          authorName: message.author.name,
+          kind: message.author.kind,
+          body: message.body,
+        })),
+      );
+      if (!reply) return null;
+
+      const created = await this.db.message.create({
+        data: { chatId, authorId: assistant.id, body: reply },
+        include: { author: { select: { name: true } } },
+      });
+      await this.db.chat.update({
+        where: { id: chatId },
+        data: { updatedAt: new Date() },
+      });
+      return this.toMessage(created);
+    } catch {
+      return null;
     }
   }
 
@@ -233,8 +287,9 @@ export class ChatService {
 
   private title(chat: ChatRow, userId: string) {
     if (chat.kind === "GROUP") return chat.name?.trim() || "Group";
-    return chat.members.find((member) => member.userId !== userId)?.user.name ?? "Direct message";
+    return chat.members.find((member) => member.userId !== userId && member.user.kind !== "AGENT")
+      ?.user.name ?? "Direct message";
   }
 }
 
-export const chatService = new ChatService(prisma, authToken);
+export const chatService = new ChatService(prisma, authToken, agent);

@@ -125,19 +125,21 @@ export default function useChat() {
           setError(await errorMessage(response));
           return false;
         }
-        const data = (await response.json()) as { message: ChatMessage };
+        const data = (await response.json()) as { message: ChatMessage; agentMessage: ChatMessage | null };
+        const messages = data.agentMessage ? [data.message, data.agentMessage] : [data.message];
+        const latest = messages[messages.length - 1];
         setSelected((current) =>
           current && current.id === selectedId
             ? {
                 ...current,
-                latestMessage: data.message,
-                messages: [...current.messages, data.message],
+                latestMessage: latest,
+                messages: [...current.messages, ...messages],
               }
             : current,
         );
         setChats((current) => {
           const next = current.map((chat) =>
-            chat.id === selectedId ? { ...chat, latestMessage: data.message } : chat,
+            chat.id === selectedId ? { ...chat, latestMessage: latest } : chat,
           );
           const index = next.findIndex((chat) => chat.id === selectedId);
           if (index <= 0) return next;

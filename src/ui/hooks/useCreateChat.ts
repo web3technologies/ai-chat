@@ -8,6 +8,7 @@ type Person = {
   id: string;
   username: string | null;
   name: string;
+  kind: "HUMAN" | "AGENT";
 };
 
 export default function useCreateChat(
@@ -35,7 +36,11 @@ export default function useCreateChat(
       })
       .then((data) => {
         if (cancelled) return;
-        setPeople(data.users.filter((person) => person.id !== currentUserId && person.username));
+        setPeople(
+          data.users.filter(
+            (person) => person.id !== currentUserId && person.username && person.kind !== "AGENT",
+          ),
+        );
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load users");
