@@ -34,11 +34,18 @@ export function useAuthState(): AuthState {
     let cancelled = false;
 
     queueMicrotask(() => {
-      void authService.current().then((next) => {
-        if (cancelled) return;
-        setUser(next);
-        setLoading(false);
-      });
+      void (async () => {
+        try {
+          const next = await authService.current();
+          if (cancelled) return;
+          setUser(next);
+        } catch (cause: unknown) {
+          if (cancelled) return;
+          setError(cause instanceof Error ? cause.message : "Request failed");
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
     });
 
     return () => {

@@ -13,17 +13,20 @@ export default function useMemories() {
   useEffect(() => {
     let cancelled = false;
 
-    void memoryService
-      .list()
-      .then((next) => {
-        if (!cancelled) setMemories(next);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Request failed");
-      })
-      .finally(() => {
+    async function load() {
+      try {
+        const next = await memoryService.list();
+        if (cancelled) return;
+        setMemories(next);
+      } catch (cause: unknown) {
+        if (cancelled) return;
+        setError(cause instanceof Error ? cause.message : "Request failed");
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    }
+
+    void load();
 
     return () => {
       cancelled = true;

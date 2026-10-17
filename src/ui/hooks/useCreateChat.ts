@@ -25,19 +25,23 @@ export default function useCreateChat(
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void authService
-      .listUsers()
-      .then((users) => {
+
+    async function load() {
+      try {
+        const users = await authService.listUsers();
         if (cancelled) return;
         setPeople(
           users.filter(
             (person) => person.id !== currentUserId && person.username && person.kind !== "AGENT",
           ),
         );
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load users");
-      });
+      } catch (cause: unknown) {
+        if (cancelled) return;
+        setError(cause instanceof Error ? cause.message : "Could not load users");
+      }
+    }
+
+    void load();
 
     return () => {
       cancelled = true;

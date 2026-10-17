@@ -11,6 +11,7 @@ export function authHeaders(): HeadersInit {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    cache: "no-store",
     headers: { ...authHeaders(), ...init?.headers },
   });
   if (!response.ok) {

@@ -22,36 +22,53 @@ export default function useChat() {
   useEffect(() => {
     if (loading || !user) return;
     let cancelled = false;
+    let version = 0;
 
-    void chatService
-      .list()
-      .then((next) => {
-        if (!cancelled) setChats(next);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Request failed");
-      });
+    const load = async () => {
+      const request = ++version;
+      try {
+        const next = await chatService.list();
+        if (cancelled || request !== version) return;
+        setChats(next);
+      } catch (cause: unknown) {
+        if (cancelled || request !== version) return;
+        setError(cause instanceof Error ? cause.message : "Request failed");
+      }
+    };
 
+    void load();
+    const timer = setInterval(() => void load(), 2000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [loading, user]);
 
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
+    let version = 0;
 
-    void chatService
-      .get(selectedId)
-      .then((chat) => {
-        if (!cancelled) setSelected(chat);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Request failed");
-      });
+    const load = async () => {
+      const request = ++version;
+      try {
+        const chat = await chatService.get(selectedId);
+        if (cancelled || request !== version) return;
+        setSelected((current) => {
+          if (current?.id === chat.id && current.messages.length > chat.messages.length) return current;
+          return chat;
+        });
+      } catch (cause: unknown) {
+        if (cancelled || request !== version) return;
+        setError(cause instanceof Error ? cause.message : "Request failed");
+      }
+    };
 
+    void load();
+    const timer = setInterval(() => void load(), 2000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [selectedId]);
 
@@ -66,17 +83,17 @@ export default function useChat() {
       setError(null);
       try {
         const data = await chatService.send(selectedId, body);
-        const messages = data.agentMessage ? [data.message, data.agentMessage] : [data.message];
-        const latest = messages[messages.length - 1];
-        setSelected((current) =>
-          current && current.id === selectedId
-            ? {
-                ...current,
-                latestMessage: latest,
-                messages: [...current.messages, ...messages],
-              }
-            : current,
-        );
+        const incoming = data.agentMessage ? [data.message, data.agentMessage] : [data.message];
+        const latest = incoming[incoming.length - 1];
+        setSelected((current) => {
+          if (!current || current.id !== selectedId) return current;
+          const seen = new Set(current.messages.map((message) => message.id));
+          return {
+            ...current,
+            latestMessage: latest,
+            messages: [...current.messages, ...incoming.filter((message) => !seen.has(message.id))],
+          };
+        });
         setChats((current) => {
           const next = current.map((chat) =>
             chat.id === selectedId ? { ...chat, latestMessage: latest } : chat,
