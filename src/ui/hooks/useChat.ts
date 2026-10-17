@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/ui/context/auth";
 import { chatService, type ChatDetail, type ChatSummary, type CreateChatInput } from "@/ui/services/chat";
 
@@ -10,10 +10,16 @@ export type { ChatDetail, ChatMember, ChatMessage, ChatSummary, CreateChatInput 
 export default function useChat() {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
+  const params = useParams<{ id?: string[] }>();
+  const selectedId = params.id?.[0] ?? null;
   const [chats, setChats] = useState<ChatSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ChatDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [routeId, setRouteId] = useState(selectedId);
+  if (routeId !== selectedId) {
+    setRouteId(selectedId);
+    if (!selectedId) setSelected(null);
+  }
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -72,10 +78,17 @@ export default function useChat() {
     };
   }, [selectedId]);
 
-  const selectChat = useCallback((id: string | null) => {
-    setSelectedId(id);
-    if (!id) setSelected(null);
-  }, []);
+  const selectChat = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        setSelected(null);
+        router.push("/chat");
+        return;
+      }
+      router.push(`/chat/${id}`);
+    },
+    [router],
+  );
 
   const send = useCallback(
     async (body: string) => {
@@ -124,8 +137,8 @@ export default function useChat() {
     };
     setChats((current) => [summary, ...current.filter((item) => item.id !== summary.id)]);
     setSelected(chat);
-    setSelectedId(chat.id);
-  }, []);
+    router.push(`/chat/${chat.id}`);
+  }, [router]);
 
   return {
     user,
