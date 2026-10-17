@@ -21,10 +21,13 @@ Start Postgres, then run the app locally:
 ```bash
 docker compose up db -d
 pnpm install
+pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 pnpm dev
 ```
+
+`pnpm install` also generates the Prisma client. `pnpm db:generate` is there in case that step was skipped. The client is written to `src/backend/db/prisma/generated` and is not committed.
 
 `pnpm db:seed` creates sam, jordan, and alex. They share `SEED_PASSWORD` from `.env`.
 
