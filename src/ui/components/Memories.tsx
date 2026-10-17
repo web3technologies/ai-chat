@@ -20,7 +20,7 @@ export default function Memories({ onClose }: { onClose: () => void }) {
       ) : memories.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500">No memories yet</p>
       ) : (
-        <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+        <ul className="min-h-0 flex-1 divide-y divide-black/10 overflow-y-auto dark:divide-white/15">
           {memories.map((memory) => (
             <MemoryRow key={memory.id} content={memory.content} onSave={(content) => update(memory.id, content)} onDelete={() => remove(memory.id)} />
           ))}
@@ -28,6 +28,12 @@ export default function Memories({ onClose }: { onClose: () => void }) {
       )}
     </div>
   );
+}
+
+function fit(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "0px";
+  element.style.height = `${element.scrollHeight}px`;
 }
 
 function MemoryRow({
@@ -49,26 +55,34 @@ function MemoryRow({
     if (!saved) setDraft(content);
   }
 
+  const dirty = draft.trim() !== content && draft.trim().length > 0;
+
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-black/10 p-3 dark:border-white/15">
+    <li className="flex items-start gap-3 px-4 py-2">
       <textarea
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        rows={3}
-        className="w-full resize-none rounded-md border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/15"
+        rows={1}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          fit(event.target);
+        }}
+        ref={fit}
+        className="max-h-24 min-h-8 flex-1 resize-none overflow-y-auto bg-transparent py-1.5 text-sm leading-5 outline-none"
       />
-      <div className="flex justify-end gap-3">
-        <button type="button" onClick={() => void onDelete()} className="text-sm underline">
+      <div className="flex h-8 shrink-0 items-center gap-3">
+        <button type="button" onClick={() => void onDelete()} className="text-sm text-zinc-500 underline">
           Delete
         </button>
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={saving || !draft.trim() || draft.trim() === content}
-          className="h-9 rounded-full bg-foreground px-4 text-sm text-background disabled:opacity-60"
-        >
-          Save
-        </button>
+        {dirty ? (
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="h-8 rounded-full bg-foreground px-3 text-sm text-background disabled:opacity-60"
+          >
+            Save
+          </button>
+        ) : null}
       </div>
     </li>
   );

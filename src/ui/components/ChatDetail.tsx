@@ -17,22 +17,36 @@ export default function ChatDetail({
   onSend: (body: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [outgoing, setOutgoing] = useState<{ body: string; seenIds: string[] } | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const chatId = chat?.id;
   const lastMessageId = chat?.messages.at(-1)?.id;
+  const delivered = chat?.messages.some(
+    (message) =>
+      outgoing &&
+      message.authorId === currentUserId &&
+      message.body === outgoing.body &&
+      !outgoing.seenIds.includes(message.id),
+  );
 
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
     list.scrollTop = list.scrollHeight;
-  }, [chatId, lastMessageId]);
+  }, [chatId, lastMessageId, outgoing]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
-    if (!body || !chat) return;
+    if (!body || !chat || sending) return;
+    setSending(true);
+    setOutgoing({ body, seenIds: chat.messages.map((message) => message.id) });
+    setDraft("");
     const sent = await onSend(body);
-    if (sent) setDraft("");
+    if (!sent) setDraft((current) => current || body);
+    setOutgoing(null);
+    setSending(false);
   }
 
   if (!chat) {
@@ -83,6 +97,14 @@ export default function ChatDetail({
             </li>
           );
         })}
+        {outgoing && !delivered ? (
+          <li className="flex flex-col items-end gap-1">
+            <span className="text-xs text-zinc-500">{currentUserName}</span>
+            <p className="max-w-[80%] rounded-2xl bg-zinc-300 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-600 dark:text-zinc-200">
+              {outgoing.body}
+            </p>
+          </li>
+        ) : null}
       </ol>
       <form onSubmit={(event) => void submit(event)} className="flex gap-2 border-t border-black/10 p-3 dark:border-white/15">
         <input
@@ -94,9 +116,9 @@ export default function ChatDetail({
         <button
           type="submit"
           className="h-10 rounded-full bg-foreground px-4 text-background disabled:opacity-60"
-          disabled={!draft.trim()}
+          disabled={sending || !draft.trim()}
         >
-          Send
+          {sending ? "Sending" : "Send"}
         </button>
       </form>
     </div>
