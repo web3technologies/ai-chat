@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ChatDetail as ChatDetailData } from "@/ui/hooks/useChat";
 
 export default function ChatDetail({
@@ -17,6 +17,15 @@ export default function ChatDetail({
   onSend: (body: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
+  const listRef = useRef<HTMLOListElement>(null);
+  const chatId = chat?.id;
+  const lastMessageId = chat?.messages.at(-1)?.id;
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+  }, [chatId, lastMessageId]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -55,7 +64,7 @@ export default function ChatDetail({
           </p>
         </div>
       </header>
-      <ol className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+      <ol ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
         {chat.messages.map((message) => {
           const author = chat.members.find((member) => member.id === message.authorId);
           const mine = message.authorId === currentUserId;
