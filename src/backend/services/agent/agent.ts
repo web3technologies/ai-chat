@@ -1,41 +1,9 @@
 import "server-only";
 import OpenAI from "openai";
 import prisma from "@/backend/db/prisma/client";
+import { instructions, memoryInstructions } from "@/backend/services/agent/prompt";
+import type { ChatPerson, KnownFact, RememberTurn, TranscriptTurn } from "@/backend/services/agent/types";
 
-export type KnownFact = {
-  name: string;
-  content: string;
-};
-
-type ChatPerson = {
-  id: string;
-  username: string | null;
-  name: string;
-};
-
-type RememberTurn = {
-  username: string | null;
-  name: string;
-  kind: "HUMAN" | "AGENT";
-  body: string;
-};
-
-export type TranscriptTurn = {
-  authorName: string;
-  kind: "HUMAN" | "AGENT";
-  body: string;
-};
-
-const instructions = `You are a member of this chat named Agent.
-Read the transcript and reply only when you can actually help.
-Stay quiet for greetings, small talk, and messages meant for the other people.
-Known facts are things you already know about these people, including from other chats. Use them when they help.
-When you stay quiet, set reply to null. Otherwise set reply to the message you would send.`;
-
-const memoryInstructions = `Read the transcript and record only stable facts about the human participants.
-Keep where they live, what they like, and plans they stated.
-Skip greetings, jokes, one-off questions, and anything about the agent.
-Use the username in parentheses. Return an empty list when nothing durable was said.`;
 
 export class Agent {
   constructor(private readonly db: typeof prisma) {}
