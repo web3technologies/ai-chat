@@ -21,3 +21,6 @@ pnpm dev
 # or
 bun dev
 ```
+
+
+1. Generate migrations for prisma: pnpm db:generate

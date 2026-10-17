@@ -1,6 +1,6 @@
 import "server-only";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/client";
-import { withAccelerate } from "@prisma/extension-accelerate";
 
 function createPrismaClient() {
   const url = process.env.DATABASE_URL;
@@ -9,19 +9,17 @@ function createPrismaClient() {
   }
 
   return new PrismaClient({
-    accelerateUrl: url,
+    adapter: new PrismaPg({ connectionString: url }),
     log: ["warn", "error"],
-  }).$extends(withAccelerate());
+  });
 }
 
-export type PrismaClientWithExtensions = ReturnType<typeof createPrismaClient>;
-
 const globalForPrisma = global as unknown as {
-  prisma: PrismaClientWithExtensions | undefined;
+  prisma: ReturnType<typeof createPrismaClient> | undefined;
 };
 
 const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+globalForPrisma.prisma = prisma;
 
 export default prisma;
