@@ -2,10 +2,12 @@
 
 import ChatDetail from "@/ui/components/ChatDetail";
 import Chats from "@/ui/components/Chats";
+import CreateChat from "@/ui/components/CreateChat";
 import useChat from "@/ui/hooks/useChat";
 
 export default function ChatPage() {
-  const { user, loading, signOut, chats, selected, selectedId, setSelectedId, send } = useChat();
+  const { user, loading, signOut, chats, selected, selectedId, selectChat, send, createChat, error } =
+    useChat();
 
   if (loading || !user) {
     return <p className="px-6 py-16 text-sm text-zinc-500">Loading...</p>;
@@ -19,19 +21,26 @@ export default function ChatPage() {
           Sign out
         </button>
       </header>
+      {error ? <p className="px-4 py-2 text-sm text-red-600">{error}</p> : null}
       <div className="flex min-h-0 flex-1">
         <aside
-          className={`${selected ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-black/10 md:w-80 md:border-r dark:border-white/15`}
+          className={`${selectedId ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-black/10 md:w-80 md:border-r dark:border-white/15`}
         >
-          <Chats chats={chats} selectedId={selectedId} onSelect={setSelectedId} />
+          <CreateChat currentUserId={user.id} onCreate={createChat} />
+          <Chats chats={chats} selectedId={selectedId} onSelect={selectChat} />
         </aside>
-        <section className={`${selected ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col`}>
-          <ChatDetail
-            chat={selected}
-            currentUserName={user.username ?? "You"}
-            onBack={() => setSelectedId(null)}
-            onSend={send}
-          />
+        <section className={`${selectedId ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col`}>
+          {selectedId && selected?.id !== selectedId ? (
+            <p className="px-6 py-16 text-sm text-zinc-500">Loading...</p>
+          ) : (
+            <ChatDetail
+              chat={selected}
+              currentUserId={user.id}
+              currentUserName={user.username ?? "You"}
+              onBack={() => selectChat(null)}
+              onSend={send}
+            />
+          )}
         </section>
       </div>
     </div>

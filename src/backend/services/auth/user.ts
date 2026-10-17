@@ -77,6 +77,16 @@ export class UserService {
     };
   }
 
+  async list(request: Request) {
+    const userId = await this.tokens.userIdFromRequest(request);
+    if (!userId) return null;
+
+    return this.db.user.findMany({
+      select: { id: true, username: true, name: true, kind: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
   async current(request: Request) {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return null;

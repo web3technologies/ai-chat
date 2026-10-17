@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const TOKEN_KEY = "moritz-chat-token";
+export const TOKEN_KEY = "moritz-chat-token";
 
 export type AuthUser = {
   id: string;

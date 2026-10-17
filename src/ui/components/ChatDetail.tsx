@@ -1,27 +1,29 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { currentUserId, type MockChat } from "@/ui/mock/chats";
+import type { ChatDetail as ChatDetailData } from "@/ui/hooks/useChat";
 
 export default function ChatDetail({
   chat,
+  currentUserId,
   currentUserName,
   onBack,
   onSend,
 }: {
-  chat: MockChat | null;
+  chat: ChatDetailData | null;
+  currentUserId: string;
   currentUserName: string;
   onBack: () => void;
-  onSend: (body: string) => void;
+  onSend: (body: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
     if (!body || !chat) return;
-    onSend(body);
-    setDraft("");
+    const sent = await onSend(body);
+    if (sent) setDraft("");
   }
 
   if (!chat) {
@@ -58,11 +60,7 @@ export default function ChatDetail({
           const author = chat.members.find((member) => member.id === message.authorId);
           const mine = message.authorId === currentUserId;
           const name =
-            author?.kind === "AGENT"
-              ? "Agent"
-              : mine
-                ? currentUserName
-                : (author?.name ?? "Unknown");
+            author?.kind === "AGENT" ? "Agent" : mine ? currentUserName : message.authorName;
           return (
             <li key={message.id} className={`flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
               <span className="text-xs text-zinc-500">{name}</span>
@@ -77,7 +75,7 @@ export default function ChatDetail({
           );
         })}
       </ol>
-      <form onSubmit={submit} className="flex gap-2 border-t border-black/10 p-3 dark:border-white/15">
+      <form onSubmit={(event) => void submit(event)} className="flex gap-2 border-t border-black/10 p-3 dark:border-white/15">
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

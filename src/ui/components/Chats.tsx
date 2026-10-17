@@ -1,18 +1,18 @@
-import type { MockChat } from "@/ui/mock/chats";
-
-function lastMessage(chat: MockChat) {
-  return chat.messages[chat.messages.length - 1]?.body ?? "No messages yet";
-}
+import type { ChatSummary } from "@/ui/hooks/useChat";
 
 export default function Chats({
   chats,
   selectedId,
   onSelect,
 }: {
-  chats: MockChat[];
+  chats: ChatSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  if (chats.length === 0) {
+    return <p className="px-4 py-6 text-sm text-zinc-500">No chats yet</p>;
+  }
+
   return (
     <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {chats.map((chat) => {
@@ -30,7 +30,9 @@ export default function Chats({
                 <span className="font-medium">{chat.title}</span>
                 <span className="text-xs uppercase tracking-wide text-zinc-500">{chat.kind}</span>
               </span>
-              <span className="truncate text-sm text-zinc-500">{lastMessage(chat)}</span>
+              <span className="truncate text-sm text-zinc-500">
+                {chat.latestMessage?.body ?? "No messages yet"}
+              </span>
             </button>
           </li>
         );
