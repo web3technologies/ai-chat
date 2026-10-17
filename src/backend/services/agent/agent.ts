@@ -71,8 +71,8 @@ export class Agent {
       }
       const parsed = JSON.parse(content) as { reply?: unknown };
       const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
-      console.log("parsed", parsed)
-      if (!reply) {
+      console.log("parsed", parsed);
+      if (!reply || reply.toLowerCase() === "null") {
         console.log("[agent] decision: stay quiet");
         return null;
       }
