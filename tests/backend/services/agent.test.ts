@@ -49,17 +49,37 @@ describe("Agent", () => {
 
   it.each([null, "", "null"])("stays quiet when the reply is %j", async (reply) => {
     create.mockResolvedValue(completion(JSON.stringify({ reply })));
-    await expect(agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "hey" }], [])).resolves.toBeNull();
+    await expect(
+      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, hey" }], []),
+    ).resolves.toBeNull();
+  });
+
+  it("stays quiet without calling the model when the latest message is not for the agent", async () => {
+    await expect(
+      agent.consider(
+        [
+          { authorName: "Alex", kind: "HUMAN", body: "Hmm agent any thoughts?" },
+          { authorName: "Agent", kind: "AGENT", body: "Try a burger place." },
+          { authorName: "Alex", kind: "HUMAN", body: "What time you wanna go Sam?" },
+        ],
+        [],
+      ),
+    ).resolves.toBeNull();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("returns a trimmed reply", async () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "  68  " })));
-    await expect(agent.consider([], [])).resolves.toBe("68");
+    await expect(
+      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" }], []),
+    ).resolves.toBe("68");
   });
 
   it("stays quiet when the request throws", async () => {
     create.mockRejectedValue(new Error("down"));
-    await expect(agent.consider([], [])).resolves.toBeNull();
+    await expect(
+      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" }], []),
+    ).resolves.toBeNull();
   });
 
   it("stores a new fact and skips duplicates, unknown people, and an empty room", async () => {

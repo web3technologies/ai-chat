@@ -22,6 +22,12 @@ export class Agent {
       return null;
     }
 
+    const latest = transcript.at(-1);
+    if (!latest || latest.kind !== "HUMAN" || !/\bagent\b/i.test(latest.body)) {
+      console.log("[agent] decision: stay quiet, not addressed");
+      return null;
+    }
+
     console.log(`[agent] considering ${transcript.length} messages`);
     for (const memory of memories) {
       console.log(`[agent] memory ${memory.name}: ${memory.content}`);
