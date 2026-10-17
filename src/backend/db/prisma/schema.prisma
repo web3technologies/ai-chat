@@ -18,11 +18,13 @@ enum ChatKind {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  kind      UserKind @default(HUMAN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  username     String?  @unique
+  passwordHash String?
+  kind         UserKind @default(HUMAN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   memberships ChatMember[]
   messages    Message[]

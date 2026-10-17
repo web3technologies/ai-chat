@@ -26,6 +26,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://moritz:moritz@db:5432/moritz_chat
+      JWT_SECRET: dev-only-change-me
     ports:
       - "3000:3000"
 
