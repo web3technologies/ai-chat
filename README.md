@@ -24,3 +24,5 @@ bun dev
 
 
 1. Generate migrations for prisma: pnpm db:generate
+2. pnpm build
+3. pnpm start
