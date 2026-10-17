@@ -29,7 +29,10 @@ pnpm dev
 
 `pnpm install` also generates the Prisma client. `pnpm db:generate` is there in case that step was skipped. The client is written to `src/backend/db/prisma/generated` and is not committed.
 
-`pnpm db:seed` creates sam, jordan, and alex. They share `SEED_PASSWORD` from `.env`.
+`pnpm db:seed` creates sam, jordan, and alex. Sign in as `sam` with password `password`. jordan and alex use the same password.
+
+> [!IMPORTANT]
+> **Address the agent by name to get a reply.** It stays quiet during small talk. Try `Agent, where should we go get food?`
 
 ### Docker Compose
 
