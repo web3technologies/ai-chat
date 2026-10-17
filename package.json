@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "tsx scripts/seedUsers.ts"
+    "db:seed": "tsx scripts/seedUsers.ts",
+    "db:clear-chats": "tsx scripts/clearChats.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",
