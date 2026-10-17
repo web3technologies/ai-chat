@@ -91,3 +91,15 @@ The app listens on port 3000. Add `OPENAI_API_KEY` to the `backend` service envi
 
 - I dont like our backend services requiring the request objects. I would refactor to extract the data out of the request first.
 - Create db repositories and have them called within services instead of direct ORM calls inside of backend services.
+
+## How I used AI
+
+I used Cursor, and instead of asking Cursor to build the entire app, I created files and stub code that would later be filled in by the AI. This allows me to better understand the codebase and prevent slop code from growing.
+
+I stubbed the files first so I understood the structure. Each feature was a small plan: I reviewed it, let Cursor implement it, then cleaned up anything I would not want to maintain.
+
+After it completed writing the code, I would then review each diff in the editor, and then test the features and updates in the browser.
+
+For refactors, I highlighted the code and asked Cursor to make that change.
+
+The unit tests were written after the codebase had been "completed". I asked cursor to write unit tests for the important items I thought needed to be tested.
