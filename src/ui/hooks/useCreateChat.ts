@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { TOKEN_KEY } from "@/ui/hooks/useAuth";
-import type { CreateChatInput } from "@/ui/hooks/useChat";
+import { authService } from "@/ui/services/auth";
+import type { CreateChatInput } from "@/ui/services/chat";
 
 type Person = {
   id: string;
@@ -25,19 +25,12 @@ export default function useCreateChat(
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    const token = localStorage.getItem(TOKEN_KEY);
-
-    void fetch("/api/users", {
-      headers: { authorization: token ? `Bearer ${token}` : "" },
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Could not load users");
-        return (await response.json()) as { users: Person[] };
-      })
-      .then((data) => {
+    void authService
+      .listUsers()
+      .then((users) => {
         if (cancelled) return;
         setPeople(
-          data.users.filter(
+          users.filter(
             (person) => person.id !== currentUserId && person.username && person.kind !== "AGENT",
           ),
         );
