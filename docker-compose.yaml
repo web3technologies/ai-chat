@@ -3,15 +3,15 @@ services:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: moritz
-      POSTGRES_PASSWORD: moritz
-      POSTGRES_DB: moritz_chat
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ai
+      POSTGRES_DB: ai_chat
     ports:
       - "5432:5432"
     volumes:
-      - moritz_chat_pg:/var/lib/postgresql/data
+      - ai_chat_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U moritz -d moritz_chat"]
+      test: ["CMD-SHELL", "pg_isready -U ai -d ai_chat"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,7 +25,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://moritz:moritz@db:5432/moritz_chat
+      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SEED_PASSWORD: ${SEED_PASSWORD:-password}
@@ -33,4 +33,4 @@ services:
       - "3000:3000"
 
 volumes:
-  moritz_chat_pg:
+  ai_chat_pg:

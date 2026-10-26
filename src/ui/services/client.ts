@@ -1,4 +1,4 @@
-export const TOKEN_KEY = "moritz-chat-token";
+export const TOKEN_KEY = "ai-chat-token";
 
 export function authHeaders(): HeadersInit {
   const token = localStorage.getItem(TOKEN_KEY);
