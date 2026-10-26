@@ -46,12 +46,8 @@ export class Agent {
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: instructions },
-          {
-            role: "user",
-            content: `Known facts:\n${facts}\n\nTranscript:\n${transcript
-              .map((turn) => `${turn.authorName} (${turn.kind}): ${turn.body}`)
-              .join("\n")}`,
-          },
+          { role: "system", content: `Known facts:\n${facts}` },
+          ...transcript.map((turn) => chatMessage(turn.authorName, turn.kind, turn.body)),
         ],
         response_format: {
           type: "json_schema",
@@ -103,11 +99,16 @@ export class Agent {
         messages: [
           { role: "system", content: memoryInstructions },
           {
-            role: "user",
-            content: `People:\n${humans.map((person) => `${person.name} (${person.username})`).join("\n")}\n\nTranscript:\n${transcript
-              .map((turn) => `${turn.name} (${turn.username ?? turn.kind}): ${turn.body}`)
-              .join("\n")}`,
+            role: "system",
+            content: `People:\n${humans.map((person) => `${person.name} (${person.username})`).join("\n")}`,
           },
+          ...transcript.map((turn) =>
+            chatMessage(
+              turn.username ? `${turn.name} (${turn.username})` : turn.name,
+              turn.kind,
+              turn.body,
+            ),
+          ),
         ],
         response_format: {
           type: "json_schema",
@@ -172,6 +173,11 @@ export class Agent {
       console.error("[agent] memory request failed", error);
     }
   }
+}
+
+function chatMessage(name: string, kind: "HUMAN" | "AGENT", body: string) {
+  if (kind === "AGENT") return { role: "assistant" as const, content: body };
+  return { role: "user" as const, content: `${name}: ${body}` };
 }
 
 function plainReply(value: unknown) {

@@ -9,6 +9,7 @@ vi.mock("openai", () => ({
 }));
 
 import { Agent } from "@/backend/services/agent/agent";
+import { instructions } from "@/backend/services/agent/prompt";
 
 function completion(content: string | null) {
   return { choices: [{ message: { content } }] };
@@ -79,6 +80,26 @@ describe("Agent", () => {
     await expect(
       agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what time?" }], []),
     ).resolves.toBeNull();
+  });
+
+  it("sends each turn as its own message", async () => {
+    create.mockResolvedValue(completion(JSON.stringify({ reply: "68" })));
+    await agent.consider(
+      [
+        { authorName: "Sam", kind: "HUMAN", body: "hey" },
+        { authorName: "Agent", kind: "AGENT", body: "hi" },
+        { authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" },
+      ],
+      [{ name: "Sam", content: "likes burgers" }],
+    );
+
+    expect(create.mock.calls[0][0].messages).toEqual([
+      { role: "system", content: instructions },
+      { role: "system", content: "Known facts:\n- Sam: likes burgers" },
+      { role: "user", content: "Sam: hey" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "Sam: Agent, what is 17 times 4?" },
+    ]);
   });
 
   it("returns a trimmed reply", async () => {
