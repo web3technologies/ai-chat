@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRepository } from "@/backend/repositories/memory";
 import { MemoryService } from "@/backend/services/memory/memory";
 
 describe("MemoryService", () => {
@@ -23,7 +24,7 @@ describe("MemoryService", () => {
       }),
     },
   };
-  const service = new MemoryService(db as never);
+  const service = new MemoryService(new MemoryRepository(db as never));
 
   beforeEach(() => {
     rows.splice(0, rows.length, {

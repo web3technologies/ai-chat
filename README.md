@@ -99,7 +99,6 @@ The app listens on port 3000.
 ### Code quality
 
 - I dont like our backend services requiring the request objects. I would refactor to extract the data out of the request first.
-- Create db repositories and have them called within services instead of direct ORM calls inside of backend services.
 
 ## How I used AI
 

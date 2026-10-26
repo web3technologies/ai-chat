@@ -1,5 +1,3 @@
-import type { Prisma } from "@/backend/db/prisma/generated/client";
-
 export type ChatMemberView = {
   id: string;
   username: string | null;
@@ -57,21 +55,3 @@ export function chatKind(value: unknown): "DM" | "GROUP" | null {
   if (value === "DM" || value === "GROUP") return value;
   return null;
 }
-
-const memberSelect = {
-  id: true,
-  username: true,
-  name: true,
-  kind: true,
-} as const;
-
-export const detailInclude = {
-  members: {
-    include: { user: { select: memberSelect } },
-    orderBy: { joinedAt: "asc" as const },
-  },
-  messages: {
-    include: { author: { select: { name: true } } },
-    orderBy: { createdAt: "asc" as const },
-  },
-} satisfies Prisma.ChatInclude;

@@ -1,20 +1,20 @@
 import "server-only";
 import OpenAI from "openai";
-import prisma from "@/backend/db/prisma/client";
 import { MEMORY_MAX } from "@/backend/limits";
+import { memoryRepository, type MemoryRepository } from "@/backend/repositories/memory";
+import { userRepository, type UserRepository } from "@/backend/repositories/user";
 import { instructions, memoryInstructions } from "@/backend/services/agent/prompt";
 import type { AgentMember, AgentMessage } from "@/backend/services/agent/types";
 
 
 export class Agent {
-  constructor(private readonly db: typeof prisma) {}
+  constructor(
+    private readonly users: UserRepository,
+    private readonly memories: MemoryRepository,
+  ) {}
 
-  async user() {
-    return this.db.user.upsert({
-      where: { username: "agent" },
-      update: { name: "Agent", kind: "AGENT" },
-      create: { username: "agent", name: "Agent", kind: "AGENT" },
-    });
+  user() {
+    return this.users.ensureAgent();
   }
 
   async consider(messages: AgentMessage[], members: AgentMember[]): Promise<string | null> {
@@ -154,10 +154,7 @@ export class Agent {
       }
 
       const parsed = JSON.parse(content) as { memories?: { username?: unknown; content?: unknown }[] };
-      const existing = await this.db.memory.findMany({
-        where: { userId: { in: humans.map((person) => person.id) } },
-        select: { userId: true, content: true },
-      });
+      const existing = await this.memories.listForUsers(humans.map((person) => person.id));
       const known = new Set(existing.map((memory) => `${memory.userId}:${memory.content.trim().toLowerCase()}`));
       let stored = 0;
 
@@ -172,7 +169,7 @@ export class Agent {
         const key = `${person.id}:${contentText.toLowerCase()}`;
         if (known.has(key)) continue;
         known.add(key);
-        await this.db.memory.create({ data: { userId: person.id, content: contentText } });
+        await this.memories.create(person.id, contentText);
         stored += 1;
         console.log(`[agent] memory: ${person.name}: ${contentText}`);
       }
@@ -203,4 +200,4 @@ function plainReply(value: unknown) {
   return reply;
 }
 
-export const agent = new Agent(prisma);
+export const agent = new Agent(userRepository, memoryRepository);

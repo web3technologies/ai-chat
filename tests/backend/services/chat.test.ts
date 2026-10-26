@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ChatRepository } from "@/backend/repositories/chat";
+import { UserRepository } from "@/backend/repositories/user";
 import { ChatService } from "@/backend/services/chat/chat";
 import type { Agent } from "@/backend/services/agent/agent";
 import type { AuthToken } from "@/backend/services/auth/token";
@@ -144,7 +146,12 @@ describe("ChatService", () => {
     consider: vi.fn(async () => null as string | null),
     remember: vi.fn(async () => undefined),
   };
-  const service = new ChatService(db as never, tokens as unknown as AuthToken, assistant as unknown as Agent);
+  const service = new ChatService(
+    new ChatRepository(db as never),
+    new UserRepository(db as never),
+    tokens as unknown as AuthToken,
+    assistant as unknown as Agent,
+  );
 
   beforeEach(() => {
     users.clear();

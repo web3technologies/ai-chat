@@ -8,6 +8,8 @@ vi.mock("openai", () => ({
   },
 }));
 
+import { MemoryRepository } from "@/backend/repositories/memory";
+import { UserRepository } from "@/backend/repositories/user";
 import { Agent } from "@/backend/services/agent/agent";
 import { instructions } from "@/backend/services/agent/prompt";
 
@@ -42,7 +44,7 @@ describe("Agent", () => {
       }),
     },
   };
-  const agent = new Agent(db as never);
+  const agent = new Agent(new UserRepository(db as never), new MemoryRepository(db as never));
   const previousKey = process.env.OPENAI_API_KEY;
 
   beforeEach(() => {

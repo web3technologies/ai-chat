@@ -1,6 +1,6 @@
 import "server-only";
 import { MEMORY_MAX } from "@/backend/limits";
-import prisma from "@/backend/db/prisma/client";
+import { memoryRepository, type MemoryRepository } from "@/backend/repositories/memory";
 
 export type MemoryView = {
   id: string;
@@ -9,22 +9,11 @@ export type MemoryView = {
   updatedAt: Date;
 };
 
-const memorySelect = {
-  id: true,
-  content: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
 export class MemoryService {
-  constructor(private readonly db: typeof prisma) {}
+  constructor(private readonly memories: MemoryRepository) {}
 
-  async list(userId: string) {
-    return this.db.memory.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      select: memorySelect,
-    });
+  list(userId: string) {
+    return this.memories.listForUser(userId);
   }
 
   async update(userId: string, id: string, content: string) {
@@ -32,24 +21,20 @@ export class MemoryService {
     if (!trimmed) return { ok: false as const, reason: "invalid" as const };
     if (trimmed.length > MEMORY_MAX) return { ok: false as const, reason: "too_long" as const };
 
-    const existing = await this.db.memory.findFirst({ where: { id, userId } });
+    const existing = await this.memories.findOwned(id, userId);
     if (!existing) return { ok: false as const, reason: "not_found" as const };
 
-    const memory = await this.db.memory.update({
-      where: { id },
-      data: { content: trimmed },
-      select: memorySelect,
-    });
+    const memory = await this.memories.updateContent(id, trimmed);
     return { ok: true as const, memory };
   }
 
   async remove(userId: string, id: string) {
-    const existing = await this.db.memory.findFirst({ where: { id, userId } });
+    const existing = await this.memories.findOwned(id, userId);
     if (!existing) return { ok: false as const, reason: "not_found" as const };
 
-    await this.db.memory.delete({ where: { id } });
+    await this.memories.remove(id);
     return { ok: true as const };
   }
 }
 
-export const memoryService = new MemoryService(prisma);
+export const memoryService = new MemoryService(memoryRepository);

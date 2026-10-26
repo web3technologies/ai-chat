@@ -1,12 +1,11 @@
 import "server-only";
-import { Prisma } from "@/backend/db/prisma/generated/client";
-import prisma from "@/backend/db/prisma/client";
 import { GROUP_NAME_MAX, MESSAGE_MAX } from "@/backend/limits";
+import { chatRepository, type ChatRepository } from "@/backend/repositories/chat";
+import { userRepository, type UserRepository } from "@/backend/repositories/user";
 import { Agent, agent } from "@/backend/services/agent/agent";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
 import {
   chatKind,
-  detailInclude,
   type ChatDetail,
   type ChatFailure,
   type ChatMessageView,
@@ -17,7 +16,8 @@ import {
 
 export class ChatService {
   constructor(
-    private readonly db: typeof prisma,
+    private readonly chats: ChatRepository,
+    private readonly users: UserRepository,
     private readonly tokens: AuthToken,
     private readonly assistant: Agent,
   ) {}
@@ -26,14 +26,7 @@ export class ChatService {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return { ok: false, reason: "unauthorized" };
 
-    const chats = await this.db.chat.findMany({
-      where: { members: { some: { userId } } },
-      include: {
-        members: detailInclude.members,
-        messages: { ...detailInclude.messages, orderBy: { createdAt: "desc" }, take: 1 },
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+    const chats = await this.chats.listForMember(userId);
 
     return { ok: true, chats: chats.map((chat) => this.toSummary(chat, userId)) };
   }
@@ -50,39 +43,23 @@ export class ChatService {
     const assistant = await this.assistant.user();
     const memberIds = [...input.memberIds, assistant.id];
 
-    const result = await this.db.$transaction(async (tx) => {
+    const result = await this.chats.transaction(async (chats) => {
       if (input.kind === "DM") {
-        const existing = await tx.chat.findFirst({
-          where: {
-            kind: "DM",
-            AND: [
-              { members: { some: { userId } } },
-              { members: { some: { userId: input.memberIds[1] } } },
-              { members: { every: { userId: { in: memberIds } } } },
-            ],
-          },
-          include: detailInclude,
-        });
+        const existing = await chats.findDirectMessage(userId, input.memberIds[1], memberIds);
         if (existing) {
           const hasAgent = existing.members.some((member) => member.userId === assistant.id);
           if (hasAgent) return { chat: existing, created: false };
-          await tx.chatMember.create({ data: { chatId: existing.id, userId: assistant.id } });
-          const chat = await tx.chat.findUniqueOrThrow({
-            where: { id: existing.id },
-            include: detailInclude,
-          });
+          await chats.addMember(existing.id, assistant.id);
+          const chat = await chats.findById(existing.id);
           return { chat, created: false };
         }
       }
 
-      const chat = await tx.chat.create({
-        data: {
-          kind: input.kind,
-          name: input.kind === "GROUP" ? input.name : null,
-          members: { create: memberIds.map((memberId) => ({ userId: memberId })) },
-        },
-        include: detailInclude,
-      });
+      const chat = await chats.create(
+        input.kind,
+        input.kind === "GROUP" ? input.name : null,
+        memberIds,
+      );
       return { chat, created: true };
     });
 
@@ -93,10 +70,7 @@ export class ChatService {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return { ok: false, reason: "unauthorized" };
 
-    const chat = await this.db.chat.findFirst({
-      where: { id: chatId, members: { some: { userId } } },
-      include: detailInclude,
-    });
+    const chat = await this.chats.findForMember(chatId, userId);
     if (!chat) return { ok: false, reason: "not_found" };
 
     return { ok: true, chat: this.toDetail(chat, userId) };
@@ -112,67 +86,31 @@ export class ChatService {
     const body = await this.messageBody(request);
     if (!body.ok) return body;
 
-    const membership = await this.db.chatMember.findUnique({
-      where: { chatId_userId: { chatId, userId } },
-    });
+    const membership = await this.chats.findMembership(chatId, userId);
     if (!membership) return { ok: false, reason: "not_found" };
 
-    try {
-      const message = await this.db.$transaction(async (tx) => {
-        const created = await tx.message.create({
-          data: { chatId, authorId: userId, body: body.body },
-          include: { author: { select: { name: true } } },
-        });
-        await tx.chat.update({
-          where: { id: chatId },
-          data: { updatedAt: new Date() },
-        });
-        return created;
-      });
+    const message = await this.chats.saveMessage(chatId, userId, body.body);
+    if (!message) return { ok: false, reason: "not_found" };
 
-      const agentMessage = await this.agentReply(chatId);
-      return { ok: true, message: this.toMessage(message), agentMessage };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === "P2003" || error.code === "P2025")
-      ) {
-        return { ok: false, reason: "not_found" };
-      }
-      throw error;
-    }
+    const agentMessage = await this.agentReply(chatId);
+    return { ok: true, message: this.toMessage(message), agentMessage };
   }
 
   private async agentReply(chatId: string): Promise<ChatMessageView | null> {
     try {
       const assistant = await this.assistant.user();
-      const chat = await this.db.chat.findUnique({
-        where: { id: chatId },
-        include: {
-          members: { include: { user: { include: { memories: true } } } },
-          messages: {
-            orderBy: { createdAt: "asc" },
-            include: { author: true },
-          },
-        },
-      });
+      const chat = await this.chats.findForAgent(chatId);
       if (!chat) return null;
       if (!chat.members.some((member) => member.userId === assistant.id)) {
-        await this.db.chatMember.create({ data: { chatId, userId: assistant.id } });
+        await this.chats.addMember(chatId, assistant.id);
       }
 
       const reply = await this.assistant.consider(chat.messages, chat.members);
       await this.assistant.remember(chat.members, chat.messages);
       if (!reply) return null;
 
-      const created = await this.db.message.create({
-        data: { chatId, authorId: assistant.id, body: reply },
-        include: { author: { select: { name: true } } },
-      });
-      await this.db.chat.update({
-        where: { id: chatId },
-        data: { updatedAt: new Date() },
-      });
+      const created = await this.chats.saveMessage(chatId, assistant.id, reply);
+      if (!created) return null;
       return this.toMessage(created);
     } catch {
       return null;
@@ -189,10 +127,7 @@ export class ChatService {
       return { ok: false as const, reason: "invalid" as const, error: "Usernames are required" };
     }
 
-    const caller = await this.db.user.findUnique({
-      where: { id: userId },
-      select: { username: true },
-    });
+    const caller = await this.users.findById(userId);
     const requested = [
       ...new Set(
         record.usernames
@@ -224,10 +159,7 @@ export class ChatService {
       return { ok: false as const, reason: "invalid" as const, error: "A group name is too long" };
     }
 
-    const users = await this.db.user.findMany({
-      where: { username: { in: requested }, kind: "HUMAN" },
-      select: { id: true, username: true },
-    });
+    const users = await this.users.findHumansByUsernames(requested);
     if (users.length !== requested.length) {
       return { ok: false as const, reason: "invalid" as const, error: "Unknown username" };
     }
@@ -298,4 +230,4 @@ export class ChatService {
   }
 }
 
-export const chatService = new ChatService(prisma, authToken, agent);
+export const chatService = new ChatService(chatRepository, userRepository, authToken, agent);

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@/backend/db/prisma/generated/client";
+import { UserRepository } from "@/backend/repositories/user";
 import { UserService } from "@/backend/services/auth/user";
 import type { AuthToken } from "@/backend/services/auth/token";
 import type { PasswordHasher } from "@/backend/services/auth/password";
@@ -29,7 +30,7 @@ describe("UserService", () => {
     userIdFromRequest: vi.fn(async () => "user-1" as string | null),
   };
   const service = new UserService(
-    db as never,
+    new UserRepository(db as never),
     passwords as unknown as PasswordHasher,
     tokens as unknown as AuthToken,
   );

@@ -1,7 +1,7 @@
 import "server-only";
-import { Prisma, type User } from "@/backend/db/prisma/generated/client";
-import prisma from "@/backend/db/prisma/client";
+import type { User } from "@/backend/db/prisma/generated/client";
 import { validUsername } from "@/backend/limits";
+import { userRepository, type UserRepository } from "@/backend/repositories/user";
 import { PasswordHasher, passwordHasher } from "@/backend/services/auth/password";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
 
@@ -23,7 +23,7 @@ type AuthResult =
 
 export class UserService {
   constructor(
-    private readonly db: typeof prisma,
+    private readonly users: UserRepository,
     private readonly passwords: PasswordHasher,
     private readonly tokens: AuthToken,
   ) {}
@@ -32,38 +32,24 @@ export class UserService {
     const credentials = await this.credentialsFrom(request);
     if (!credentials) return { ok: false, reason: "invalid" };
 
-    try {
-      const user = await this.db.user.create({
-        data: {
-          name: credentials.username,
-          username: credentials.username,
-          passwordHash: await this.passwords.hash(credentials.password),
-          kind: "HUMAN",
-        },
-      });
-      return {
-        ok: true,
-        token: await this.tokens.sign(user.id),
-        user: this.toPublic(user),
-      };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      ) {
-        return { ok: false, reason: "taken" };
-      }
-      throw error;
-    }
+    const user = await this.users.createHuman(
+      credentials.username,
+      await this.passwords.hash(credentials.password),
+    );
+    if (!user) return { ok: false, reason: "taken" };
+
+    return {
+      ok: true,
+      token: await this.tokens.sign(user.id),
+      user: this.toPublic(user),
+    };
   }
 
   async signin(request: Request): Promise<AuthResult> {
     const credentials = await this.credentialsFrom(request);
     if (!credentials) return { ok: false, reason: "invalid" };
 
-    const user = await this.db.user.findUnique({
-      where: { username: credentials.username },
-    });
+    const user = await this.users.findByUsername(credentials.username);
     if (
       !user?.passwordHash ||
       !(await this.passwords.verify(credentials.password, user.passwordHash))
@@ -82,17 +68,14 @@ export class UserService {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return null;
 
-    return this.db.user.findMany({
-      select: { id: true, username: true, name: true, kind: true },
-      orderBy: { name: "asc" },
-    });
+    return this.users.list();
   }
 
   async current(request: Request) {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return null;
 
-    const user = await this.db.user.findUnique({ where: { id: userId } });
+    const user = await this.users.findById(userId);
     if (!user) return null;
 
     return this.toPublic(user);
@@ -129,4 +112,4 @@ export class UserService {
   }
 }
 
-export const userService = new UserService(prisma, passwordHasher, authToken);
+export const userService = new UserService(userRepository, passwordHasher, authToken);
