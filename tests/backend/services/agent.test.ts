@@ -15,6 +15,22 @@ function completion(content: string | null) {
   return { choices: [{ message: { content } }] };
 }
 
+function message(name: string, kind: "HUMAN" | "AGENT", body: string) {
+  return { body, author: { name, username: name.toLowerCase(), kind } };
+}
+
+function room(facts: { name: string; content: string }[] = []) {
+  return facts.map((fact) => ({
+    user: {
+      id: fact.name,
+      username: fact.name.toLowerCase(),
+      name: fact.name,
+      kind: "HUMAN" as const,
+      memories: [{ content: fact.content }],
+    },
+  }));
+}
+
 describe("Agent", () => {
   const memories: { userId: string; content: string }[] = [];
   const db = {
@@ -43,7 +59,7 @@ describe("Agent", () => {
   it("stays quiet and stores nothing without an API key", async () => {
     delete process.env.OPENAI_API_KEY;
     await expect(agent.consider([], [])).resolves.toBeNull();
-    await agent.remember([{ id: "sam", username: "sam", name: "Sam" }], []);
+    await agent.remember(room([{ name: "Sam", content: "likes pizza" }]), []);
     expect(create).not.toHaveBeenCalled();
     expect(db.memory.create).not.toHaveBeenCalled();
   });
@@ -51,7 +67,7 @@ describe("Agent", () => {
   it.each([null, "", "null"])("stays quiet when the reply is %j", async (reply) => {
     create.mockResolvedValue(completion(JSON.stringify({ reply })));
     await expect(
-      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, hey" }], []),
+      agent.consider([message("Sam", "HUMAN", "Agent, hey")], []),
     ).resolves.toBeNull();
   });
 
@@ -59,9 +75,9 @@ describe("Agent", () => {
     await expect(
       agent.consider(
         [
-          { authorName: "Alex", kind: "HUMAN", body: "Hmm agent any thoughts?" },
-          { authorName: "Agent", kind: "AGENT", body: "Try a burger place." },
-          { authorName: "Alex", kind: "HUMAN", body: "What time you wanna go Sam?" },
+          message("Alex", "HUMAN", "Hmm agent any thoughts?"),
+          message("Agent", "AGENT", "Try a burger place."),
+          message("Alex", "HUMAN", "What time you wanna go Sam?"),
         ],
         [],
       ),
@@ -78,7 +94,7 @@ describe("Agent", () => {
       ),
     );
     await expect(
-      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what time?" }], []),
+      agent.consider([message("Sam", "HUMAN", "Agent, what time?")], []),
     ).resolves.toBeNull();
   });
 
@@ -86,11 +102,11 @@ describe("Agent", () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "68" })));
     await agent.consider(
       [
-        { authorName: "Sam", kind: "HUMAN", body: "hey" },
-        { authorName: "Agent", kind: "AGENT", body: "hi" },
-        { authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" },
+        message("Sam", "HUMAN", "hey"),
+        message("Agent", "AGENT", "hi"),
+        message("Sam", "HUMAN", "Agent, what is 17 times 4?"),
       ],
-      [{ name: "Sam", content: "likes burgers" }],
+      room([{ name: "Sam", content: "likes burgers" }]),
     );
 
     expect(create.mock.calls[0][0].messages).toEqual([
@@ -105,14 +121,14 @@ describe("Agent", () => {
   it("returns a trimmed reply", async () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "  68  " })));
     await expect(
-      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" }], []),
+      agent.consider([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], []),
     ).resolves.toBe("68");
   });
 
   it("stays quiet when the request throws", async () => {
     create.mockRejectedValue(new Error("down"));
     await expect(
-      agent.consider([{ authorName: "Sam", kind: "HUMAN", body: "Agent, what is 17 times 4?" }], []),
+      agent.consider([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], []),
     ).resolves.toBeNull();
   });
 
@@ -131,9 +147,14 @@ describe("Agent", () => {
         }),
       ),
     );
-    await agent.remember([{ id: "user-sam", username: "sam", name: "Sam" }], [
-      { username: "sam", name: "Sam", kind: "HUMAN", body: "I like pizza" },
-    ]);
+    await agent.remember(
+      [
+        {
+          user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] },
+        },
+      ],
+      [message("Sam", "HUMAN", "I like pizza")],
+    );
 
     expect(memories).toEqual([{ userId: "user-sam", content: "likes pizza" }]);
   });

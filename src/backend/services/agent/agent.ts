@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import prisma from "@/backend/db/prisma/client";
 import { MEMORY_MAX } from "@/backend/limits";
 import { instructions, memoryInstructions } from "@/backend/services/agent/prompt";
-import type { ChatPerson, KnownFact, RememberTurn, TranscriptTurn } from "@/backend/services/agent/types";
+import type { AgentMember, AgentMessage } from "@/backend/services/agent/types";
 
 
 export class Agent {
@@ -17,24 +17,30 @@ export class Agent {
     });
   }
 
-  async consider(transcript: TranscriptTurn[], memories: KnownFact[]): Promise<string | null> {
+  async consider(messages: AgentMessage[], members: AgentMember[]): Promise<string | null> {
     if (!process.env.OPENAI_API_KEY) {
       console.log("[agent] skipped: OPENAI_API_KEY is not set");
       return null;
     }
 
-    const latest = transcript.at(-1);
-    if (!latest || latest.kind !== "HUMAN" || !/\bagent\b/i.test(latest.body)) {
+    const latest = messages.at(-1);
+    if (!latest || latest.author.kind !== "HUMAN" || !/\bagent\b/i.test(latest.body)) {
       console.log("[agent] decision: stay quiet, not addressed");
       return null;
     }
 
-    console.log(`[agent] considering ${transcript.length} messages`);
+    const memories = members.flatMap((member) =>
+      member.user.kind === "HUMAN"
+        ? member.user.memories.map((memory) => ({ name: member.user.name, content: memory.content }))
+        : [],
+    );
+
+    console.log(`[agent] considering ${messages.length} messages`);
     for (const memory of memories) {
       console.log(`[agent] memory ${memory.name}: ${memory.content}`);
     }
-    for (const turn of transcript) {
-      console.log(`[agent] ${turn.authorName} (${turn.kind}): ${turn.body}`);
+    for (const message of messages) {
+      console.log(`[agent] ${message.author.name} (${message.author.kind}): ${message.body}`);
     }
 
     const facts = memories.length
@@ -48,7 +54,7 @@ export class Agent {
         messages: [
           { role: "system", content: instructions },
           { role: "user", content: `Quoted facts:\n${facts}` },
-          ...transcript.map((turn) => chatMessage(turn.authorName, turn.kind, turn.body)),
+          ...messages.map((message) => chatMessage(message.author.name, message.author.kind, message.body)),
         ],
         response_format: {
           type: "json_schema",
@@ -87,10 +93,10 @@ export class Agent {
     }
   }
 
-  async remember(people: ChatPerson[], transcript: RememberTurn[]) {
+  async remember(members: AgentMember[], messages: AgentMessage[]) {
     if (!process.env.OPENAI_API_KEY) return;
 
-    const humans = people.filter((person) => person.username);
+    const humans = members.map((member) => member.user).filter((person) => person.kind === "HUMAN" && person.username);
     if (humans.length === 0) return;
 
     try {
@@ -105,11 +111,11 @@ export class Agent {
               .map((person) => `${oneLine(person.name)} (${oneLine(person.username ?? "")})`)
               .join("\n")}`,
           },
-          ...transcript.map((turn) =>
+          ...messages.map((message) =>
             chatMessage(
-              turn.username ? `${turn.name} (${turn.username})` : turn.name,
-              turn.kind,
-              turn.body,
+              message.author.username ? `${message.author.name} (${message.author.username})` : message.author.name,
+              message.author.kind,
+              message.body,
             ),
           ),
         ],

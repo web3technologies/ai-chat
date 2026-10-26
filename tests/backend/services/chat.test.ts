@@ -71,6 +71,14 @@ describe("ChatService", () => {
         if (where.kind === "DM") return chats.find((chat) => chat.kind === "DM") ?? null;
         return null;
       }),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const chat = chats.find((item) => item.id === where.id);
+        if (!chat) return null;
+        return {
+          ...chat,
+          members: chat.members.map((item) => ({ ...item, user: { ...item.user, memories: [] } })),
+        };
+      }),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
         const chat = chats.find((item) => item.id === where.id);
         if (!chat) throw new Error("missing chat");

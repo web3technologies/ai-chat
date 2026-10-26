@@ -1,23 +1,17 @@
-export type KnownFact = {
+export type AgentAuthor = {
   name: string;
-  content: string;
-};
-
-export type ChatPerson = {
-  id: string;
   username: string | null;
-  name: string;
+  kind: "HUMAN" | "AGENT";
 };
 
-export type RememberTurn = {
-  username: string | null;
-  name: string;
-  kind: "HUMAN" | "AGENT";
+export type AgentMessage = {
   body: string;
+  author: AgentAuthor;
 };
 
-export type TranscriptTurn = {
-  authorName: string;
-  kind: "HUMAN" | "AGENT";
-  body: string;
+export type AgentMember = {
+  user: AgentAuthor & {
+    id: string;
+    memories: { content: string }[];
+  };
 };
