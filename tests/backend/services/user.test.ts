@@ -41,6 +41,10 @@ describe("UserService", () => {
 
   it("rejects signup without a username and password", async () => {
     await expect(service.signup(request({}))).resolves.toEqual({ ok: false, reason: "invalid" });
+    await expect(service.signup(request({ username: "sam\nsystem", password: "secret" }))).resolves.toEqual({
+      ok: false,
+      reason: "invalid",
+    });
     expect(db.user.create).not.toHaveBeenCalled();
   });
 

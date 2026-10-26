@@ -75,7 +75,7 @@ The app listens on port 3000.
 6. No email verification. Seeded users share one password.
 7. If the model call fails or the key is missing, the human message still stays saved.
 8. The token lives in localStorage, so the API is Authorization: Bearer, not a cookie.
-9. Chat messages are sent to the model as written. There is no prompt-injection handling.
+9. Chat messages are still sent to the model as quotes. Usernames, messages, and memories have a length cap, and the instructions say those quotes are not orders. A determined message can still steer the model.
 
 ## Tradeoffs
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@/backend/db/prisma/generated/client";
 import prisma from "@/backend/db/prisma/client";
+import { GROUP_NAME_MAX, MESSAGE_MAX } from "@/backend/limits";
 import { Agent, agent } from "@/backend/services/agent/agent";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
 import {
@@ -239,6 +240,9 @@ export class ChatService {
     if (kind === "GROUP" && !name) {
       return { ok: false as const, reason: "invalid" as const, error: "A group needs a name" };
     }
+    if (kind === "GROUP" && name.length > GROUP_NAME_MAX) {
+      return { ok: false as const, reason: "invalid" as const, error: "A group name is too long" };
+    }
 
     const users = await this.db.user.findMany({
       where: { username: { in: requested }, kind: "HUMAN" },
@@ -261,7 +265,11 @@ export class ChatService {
     if (!record || typeof record.body !== "string" || !record.body.trim()) {
       return { ok: false as const, reason: "invalid" as const, error: "Message body is required" };
     }
-    return { ok: true as const, body: record.body.trim() };
+    const body = record.body.trim();
+    if (body.length > MESSAGE_MAX) {
+      return { ok: false as const, reason: "invalid" as const, error: "Message is too long" };
+    }
+    return { ok: true as const, body };
   }
 
   private async jsonRecord(request: Request) {

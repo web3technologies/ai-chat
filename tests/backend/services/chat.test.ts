@@ -176,6 +176,11 @@ describe("ChatService", () => {
       ok: false,
       reason: "invalid",
     });
+    await expect(service.send(request({ body: "a".repeat(2001) }), "chat-1")).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid",
+      error: "Message is too long",
+    });
     await expect(service.create(request({ kind: "GROUP", usernames: ["jordan"] }))).resolves.toMatchObject({
       ok: false,
       reason: "invalid",

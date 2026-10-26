@@ -18,6 +18,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (result.reason === "invalid") {
       return Response.json({ error: "Memory content is required" }, { status: 400 });
     }
+    if (result.reason === "too_long") {
+      return Response.json({ error: "Memory is too long" }, { status: 400 });
+    }
     return Response.json({ error: "Memory not found" }, { status: 404 });
   }
 

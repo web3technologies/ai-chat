@@ -46,6 +46,13 @@ describe("MemoryService", () => {
     await expect(service.update("sam", "m1", "   ")).resolves.toEqual({ ok: false, reason: "invalid" });
   });
 
+  it("rejects an update over the length cap", async () => {
+    await expect(service.update("sam", "m1", "a".repeat(501))).resolves.toEqual({
+      ok: false,
+      reason: "too_long",
+    });
+  });
+
   it("hides another user's memory on update and delete", async () => {
     await expect(service.update("jordan", "m1", "nope")).resolves.toEqual({ ok: false, reason: "not_found" });
     await expect(service.remove("jordan", "m1")).resolves.toEqual({ ok: false, reason: "not_found" });

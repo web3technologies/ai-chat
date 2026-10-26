@@ -1,4 +1,5 @@
 import "server-only";
+import { MEMORY_MAX } from "@/backend/limits";
 import prisma from "@/backend/db/prisma/client";
 
 export type MemoryView = {
@@ -29,6 +30,7 @@ export class MemoryService {
   async update(userId: string, id: string, content: string) {
     const trimmed = content.trim();
     if (!trimmed) return { ok: false as const, reason: "invalid" as const };
+    if (trimmed.length > MEMORY_MAX) return { ok: false as const, reason: "too_long" as const };
 
     const existing = await this.db.memory.findFirst({ where: { id, userId } });
     if (!existing) return { ok: false as const, reason: "not_found" as const };

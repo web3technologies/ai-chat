@@ -1,6 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
 import prisma from "@/backend/db/prisma/client";
+import { MEMORY_MAX } from "@/backend/limits";
 import { instructions, memoryInstructions } from "@/backend/services/agent/prompt";
 import type { ChatPerson, KnownFact, RememberTurn, TranscriptTurn } from "@/backend/services/agent/types";
 
@@ -37,7 +38,7 @@ export class Agent {
     }
 
     const facts = memories.length
-      ? memories.map((memory) => `- ${memory.name}: ${memory.content}`).join("\n")
+      ? memories.map((memory) => `- ${oneLine(memory.name)}: ${oneLine(memory.content)}`).join("\n")
       : "None";
 
     try {
@@ -46,7 +47,7 @@ export class Agent {
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: instructions },
-          { role: "system", content: `Known facts:\n${facts}` },
+          { role: "user", content: `Quoted facts:\n${facts}` },
           ...transcript.map((turn) => chatMessage(turn.authorName, turn.kind, turn.body)),
         ],
         response_format: {
@@ -99,8 +100,10 @@ export class Agent {
         messages: [
           { role: "system", content: memoryInstructions },
           {
-            role: "system",
-            content: `People:\n${humans.map((person) => `${person.name} (${person.username})`).join("\n")}`,
+            role: "user",
+            content: `Quoted people:\n${humans
+              .map((person) => `${oneLine(person.name)} (${oneLine(person.username ?? "")})`)
+              .join("\n")}`,
           },
           ...transcript.map((turn) =>
             chatMessage(
@@ -155,7 +158,7 @@ export class Agent {
       for (const memory of parsed.memories ?? []) {
         if (typeof memory.username !== "string" || typeof memory.content !== "string") continue;
         const contentText = memory.content.trim();
-        if (!contentText) continue;
+        if (!contentText || contentText.length > MEMORY_MAX) continue;
         const person = humans.find(
           (candidate) => candidate.username?.toLowerCase() === memory.username?.toString().toLowerCase(),
         );
@@ -177,7 +180,12 @@ export class Agent {
 
 function chatMessage(name: string, kind: "HUMAN" | "AGENT", body: string) {
   if (kind === "AGENT") return { role: "assistant" as const, content: body };
-  return { role: "user" as const, content: `${name}: ${body}` };
+  return { role: "user" as const, content: `${oneLine(name)}: ${body}` };
+}
+
+function oneLine(value: string) {
+  const single = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  return single || "Someone";
 }
 
 function plainReply(value: unknown) {

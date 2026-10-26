@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma, type User } from "@/backend/db/prisma/generated/client";
 import prisma from "@/backend/db/prisma/client";
+import { validUsername } from "@/backend/limits";
 import { PasswordHasher, passwordHasher } from "@/backend/services/auth/password";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
 
@@ -122,7 +123,7 @@ export class UserService {
     }
 
     const username = record.username.trim();
-    if (!username || !record.password) return null;
+    if (!validUsername(username) || !record.password) return null;
 
     return { username, password: record.password };
   }

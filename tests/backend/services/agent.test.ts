@@ -95,7 +95,7 @@ describe("Agent", () => {
 
     expect(create.mock.calls[0][0].messages).toEqual([
       { role: "system", content: instructions },
-      { role: "system", content: "Known facts:\n- Sam: likes burgers" },
+      { role: "user", content: "Quoted facts:\n- Sam: likes burgers" },
       { role: "user", content: "Sam: hey" },
       { role: "assistant", content: "hi" },
       { role: "user", content: "Sam: Agent, what is 17 times 4?" },
