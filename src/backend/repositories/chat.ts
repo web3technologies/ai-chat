@@ -91,7 +91,11 @@ export class ChatRepository {
     return this.db.chat.findUnique({
       where: { id: chatId },
       include: {
-        members: { include: { user: { include: { memories: true } } } },
+        members: {
+          include: {
+            user: { include: { memories: { include: { audience: { select: { userId: true } } } } } },
+          },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           include: { author: true },

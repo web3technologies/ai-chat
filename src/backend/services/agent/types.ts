@@ -9,9 +9,15 @@ export type AgentMessage = {
   author: AgentAuthor;
 };
 
+export type AgentMemory = {
+  content: string;
+  visibility: "PRIVATE" | "PARTICIPANTS";
+  audience: { userId: string }[];
+};
+
 export type AgentMember = {
   user: AgentAuthor & {
     id: string;
-    memories: { content: string }[];
+    memories: AgentMemory[];
   };
 };

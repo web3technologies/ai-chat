@@ -29,9 +29,12 @@ export class Agent {
       return null;
     }
 
+    const humanIds = members.flatMap((member) => (member.user.kind === "HUMAN" ? [member.user.id] : []));
     const memories = members.flatMap((member) =>
       member.user.kind === "HUMAN"
-        ? member.user.memories.map((memory) => ({ name: member.user.name, content: memory.content }))
+        ? member.user.memories
+            .filter((memory) => hearable(memory, member.user.id, humanIds))
+            .map((memory) => ({ name: member.user.name, content: memory.content }))
         : [],
     );
 
@@ -154,8 +157,19 @@ export class Agent {
       }
 
       const parsed = JSON.parse(content) as { memories?: { username?: unknown; content?: unknown }[] };
-      const existing = await this.memories.listForUsers(humans.map((person) => person.id));
-      const known = new Set(existing.map((memory) => `${memory.userId}:${memory.content.trim().toLowerCase()}`));
+      const humanIds = humans.map((person) => person.id);
+      const visibility = humanIds.length === 1 ? "PRIVATE" : "PARTICIPANTS";
+      const existing = await this.memories.listForUsers(humanIds);
+      const known = new Set(
+        existing.map((memory) =>
+          memoryKey(
+            memory.userId,
+            memory.content,
+            memory.visibility,
+            memory.audience.map((person) => person.userId),
+          ),
+        ),
+      );
       let stored = 0;
 
       for (const memory of parsed.memories ?? []) {
@@ -166,10 +180,10 @@ export class Agent {
           (candidate) => candidate.username?.toLowerCase() === memory.username?.toString().toLowerCase(),
         );
         if (!person) continue;
-        const key = `${person.id}:${contentText.toLowerCase()}`;
+        const key = memoryKey(person.id, contentText, visibility, humanIds);
         if (known.has(key)) continue;
         known.add(key);
-        await this.memories.create(person.id, contentText);
+        await this.memories.create(person.id, contentText, visibility, humanIds);
         stored += 1;
         console.log(`[agent] memory: ${person.name}: ${contentText}`);
       }
@@ -179,6 +193,20 @@ export class Agent {
       console.error("[agent] memory request failed", error);
     }
   }
+}
+
+function hearable(
+  memory: { visibility: "PRIVATE" | "PARTICIPANTS"; audience: { userId: string }[] },
+  subjectId: string,
+  humanIds: string[],
+) {
+  if (memory.visibility === "PRIVATE") return humanIds.length === 1 && humanIds[0] === subjectId;
+  const allowed = new Set(memory.audience.map((person) => person.userId));
+  return humanIds.every((id) => allowed.has(id));
+}
+
+function memoryKey(userId: string, content: string, visibility: string, audienceIds: string[]) {
+  return `${userId}:${visibility}:${[...audienceIds].sort().join(",")}:${content.trim().toLowerCase()}`;
 }
 
 function chatMessage(name: string, kind: "HUMAN" | "AGENT", body: string) {

@@ -28,20 +28,49 @@ function room(facts: { name: string; content: string }[] = []) {
       username: fact.name.toLowerCase(),
       name: fact.name,
       kind: "HUMAN" as const,
-      memories: [{ content: fact.content }],
+      memories: [
+        {
+          content: fact.content,
+          visibility: "PRIVATE" as const,
+          audience: [{ userId: fact.name }],
+        },
+      ],
     },
   }));
 }
 
 describe("Agent", () => {
-  const memories: { userId: string; content: string }[] = [];
+  const memories: {
+    userId: string;
+    content: string;
+    visibility: "PRIVATE" | "PARTICIPANTS";
+    audience: { create: { userId: string }[] };
+  }[] = [];
   const db = {
     memory: {
-      findMany: vi.fn(async () => memories.map((memory) => ({ ...memory }))),
-      create: vi.fn(async ({ data }: { data: { userId: string; content: string } }) => {
-        memories.push(data);
-        return data;
-      }),
+      findMany: vi.fn(async () =>
+        memories.map((memory) => ({
+          userId: memory.userId,
+          content: memory.content,
+          visibility: memory.visibility,
+          audience: memory.audience.create,
+        })),
+      ),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            userId: string;
+            content: string;
+            visibility: "PRIVATE" | "PARTICIPANTS";
+            audience: { create: { userId: string }[] };
+          };
+        }) => {
+          memories.push(data);
+          return data;
+        },
+      ),
     },
   };
   const agent = new Agent(new UserRepository(db as never), new MemoryRepository(db as never));
@@ -158,6 +187,70 @@ describe("Agent", () => {
       [message("Sam", "HUMAN", "I like pizza")],
     );
 
-    expect(memories).toEqual([{ userId: "user-sam", content: "likes pizza" }]);
+    expect(memories).toEqual([
+      {
+        userId: "user-sam",
+        content: "likes pizza",
+        visibility: "PRIVATE",
+        audience: { create: [{ userId: "user-sam" }] },
+      },
+    ]);
+  });
+
+  it("shares a fact with the people in the room and keeps a private fact out of a larger room", async () => {
+    create.mockResolvedValue(completion(JSON.stringify({ memories: [{ username: "sam", content: "lives in Austin" }] })));
+    await agent.remember(
+      [
+        { user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] } },
+        { user: { id: "user-jordan", username: "jordan", name: "Jordan", kind: "HUMAN", memories: [] } },
+      ],
+      [message("Sam", "HUMAN", "I live in Austin")],
+    );
+    expect(memories).toEqual([
+      {
+        userId: "user-sam",
+        content: "lives in Austin",
+        visibility: "PARTICIPANTS",
+        audience: { create: [{ userId: "user-sam" }, { userId: "user-jordan" }] },
+      },
+    ]);
+
+    create.mockResolvedValue(completion(JSON.stringify({ reply: "Austin" })));
+    const sam = {
+      id: "user-sam",
+      username: "sam",
+      name: "Sam",
+      kind: "HUMAN" as const,
+      memories: [
+        {
+          content: "allergic to peanuts",
+          visibility: "PRIVATE" as const,
+          audience: [{ userId: "user-sam" }],
+        },
+        {
+          content: "lives in Austin",
+          visibility: "PARTICIPANTS" as const,
+          audience: [{ userId: "user-sam" }, { userId: "user-jordan" }],
+        },
+      ],
+    };
+    const jordan = {
+      id: "user-jordan",
+      username: "jordan",
+      name: "Jordan",
+      kind: "HUMAN" as const,
+      memories: [],
+    };
+    await agent.consider([message("Jordan", "HUMAN", "Agent, where does Sam live?")], [
+      { user: sam },
+      { user: jordan },
+    ]);
+    expect(create.mock.calls[1][0].messages[1].content).toBe("Quoted facts:\n- Sam: lives in Austin");
+
+    await agent.consider(
+      [message("Alex", "HUMAN", "Agent, where does Sam live?")],
+      [{ user: sam }, { user: jordan }, { user: { ...jordan, id: "user-alex", username: "alex", name: "Alex" } }],
+    );
+    expect(create.mock.calls[2][0].messages[1].content).toBe("Quoted facts:\nNone");
   });
 });

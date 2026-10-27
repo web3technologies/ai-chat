@@ -26,9 +26,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships ChatMember[]
-  messages    Message[]
-  memories    Memory[]
+  memberships     ChatMember[]
+  messages        Message[]
+  memories        Memory[]
+  memoryAudiences MemoryAudience[]
 }
 
 model Chat {
@@ -68,13 +69,31 @@ model Message {
 }
 
 model Memory {
-  id        String   @id @default(cuid())
-  userId    String
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String           @id @default(cuid())
+  userId     String
+  content    String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  visibility MemoryVisibility @default(PARTICIPANTS)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience MemoryAudience[]
 
   @@index([userId])
+}
+
+model MemoryAudience {
+  memoryId String
+  userId   String
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, userId])
+  @@index([userId])
+}
+
+enum MemoryVisibility {
+  PRIVATE
+  PARTICIPANTS
 }

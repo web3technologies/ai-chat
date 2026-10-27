@@ -38,12 +38,29 @@ export class MemoryRepository {
   listForUsers(userIds: string[]) {
     return this.db.memory.findMany({
       where: { userId: { in: userIds } },
-      select: { userId: true, content: true },
+      select: {
+        userId: true,
+        content: true,
+        visibility: true,
+        audience: { select: { userId: true } },
+      },
     });
   }
 
-  create(userId: string, content: string) {
-    return this.db.memory.create({ data: { userId, content } });
+  create(
+    userId: string,
+    content: string,
+    visibility: "PRIVATE" | "PARTICIPANTS",
+    audienceIds: string[],
+  ) {
+    return this.db.memory.create({
+      data: {
+        userId,
+        content,
+        visibility,
+        audience: { create: audienceIds.map((id) => ({ userId: id })) },
+      },
+    });
   }
 }
 
