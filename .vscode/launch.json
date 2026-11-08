@@ -5,7 +5,29 @@
       "name": "Next Debug",
       "type": "node-terminal",
       "request": "launch",
-      "command": "pnpm dev -- --inspect"
+      "command": "pnpm dev --inspect --webpack",
+      "autoAttachChildProcesses": false,
+      "serverReadyAction": {
+        "pattern": "Debugger port: 9230",
+        "action": "startDebugging",
+        "name": "Attach to Next server"
+      }
+    },
+    {
+      "name": "Attach to Next server",
+      "type": "node",
+      "request": "attach",
+      "port": 9230,
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "sourceMapPathOverrides": {
+        "webpack://_N_E/*": "${workspaceFolder}/*",
+        "webpack-internal:///(rsc)/./*": "${workspaceFolder}/*"
+      }
     }
   ]
 }

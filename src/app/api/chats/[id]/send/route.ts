@@ -1,10 +1,12 @@
+import chatProducer from "@/backend/producers/chat";
 import { chatService } from "@/backend/services/chat/chat";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const result = await chatService.send(request, id);
   if (!result.ok) return chatError(result);
-  return Response.json({ message: result.message, agentMessage: result.agentMessage }, { status: 201 });
+  await chatProducer.produce(id, result.message.id);
+  return Response.json({ message: result.message, agentMessage: null }, { status: 201 });
 }
 
 function chatError(result: { reason: "unauthorized" | "not_found" | "invalid"; error?: string }) {

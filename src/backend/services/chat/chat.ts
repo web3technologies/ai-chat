@@ -92,15 +92,16 @@ export class ChatService {
     const message = await this.chats.saveMessage(chatId, userId, body.body);
     if (!message) return { ok: false, reason: "not_found" };
 
-    const agentMessage = await this.agentReply(chatId);
-    return { ok: true, message: this.toMessage(message), agentMessage };
+    return { ok: true, message: this.toMessage(message), agentMessage: null };
   }
 
-  private async agentReply(chatId: string): Promise<ChatMessageView | null> {
+  async reply(chatId: string): Promise<ChatMessageView | null> {
     try {
       const assistant = await this.assistant.user();
       const chat = await this.chats.findForAgent(chatId);
       if (!chat) return null;
+      const latest = chat.messages.at(-1);
+      if (latest?.author.kind === "AGENT") return null;
       if (!chat.members.some((member) => member.userId === assistant.id)) {
         await this.chats.addMember(chatId, assistant.id);
       }

@@ -12,6 +12,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma generate && prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "consume": "node --conditions=react-server --import tsx src/backend/consumers/run.ts",
     "db:seed": "tsx scripts/seedUsers.ts",
     "db:clear-chats": "tsx scripts/clearChats.ts"
   },
@@ -19,6 +20,7 @@
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "jose": "^6.2.12",
+    "kafkajs": "^2.2.4",
     "next": "16.4.2",
     "openai": "^7.34.0",
     "pg": "^8.23.1",
@@ -27,6 +29,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",

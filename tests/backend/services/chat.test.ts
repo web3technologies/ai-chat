@@ -252,7 +252,7 @@ describe("ChatService", () => {
     expect(db.chatMember.create).not.toHaveBeenCalled();
   });
 
-  it("saves the human message and returns the agent reply", async () => {
+  it("saves the human message and leaves the agent reply for the consumer", async () => {
     chats.push({
       id: "chat-1",
       kind: "DM",
@@ -267,8 +267,36 @@ describe("ChatService", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.message.body).toBe("what is 17 times 4");
-    expect(result.agentMessage?.body).toBe("68");
-    expect(result.agentMessage?.authorName).toBe("Agent");
+    expect(result.agentMessage).toBeNull();
+    expect(assistant.consider).not.toHaveBeenCalled();
+
+    const reply = await service.reply("chat-1");
+
+    expect(reply?.body).toBe("68");
+    expect(reply?.authorName).toBe("Agent");
+    expect(assistant.consider).toHaveBeenCalledOnce();
+  });
+
+  it("skips a second reply when the newest message is already from the agent", async () => {
+    chats.push({
+      id: "chat-1",
+      kind: "DM",
+      name: null,
+      members: [member("me"), member("agent")],
+      messages: [
+        {
+          id: "message-agent",
+          chatId: "chat-1",
+          body: "already answered",
+          createdAt: new Date(),
+          authorId: "agent",
+          author: { name: "Agent", username: "agent", kind: "AGENT" },
+        },
+      ],
+    });
+
+    await expect(service.reply("chat-1")).resolves.toBeNull();
+    expect(assistant.consider).not.toHaveBeenCalled();
   });
 
   it("keeps the human message when the agent throws", async () => {
@@ -282,10 +310,11 @@ describe("ChatService", () => {
     assistant.consider.mockRejectedValue(new Error("down"));
 
     const result = await service.send(request({ body: "hello" }), "chat-1");
+    const reply = await service.reply("chat-1");
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.message.body).toBe("hello");
-    expect(result.agentMessage).toBeNull();
+    expect(reply).toBeNull();
   });
 });

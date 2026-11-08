@@ -21,15 +21,16 @@ Sign in as `sam` with password `password`. jordan and alex use the same password
 
 ### Development
 
-Start Postgres, then run the app locally:
+Start Postgres and Kafka, then run the app locally. Copy `.env.example` to `.env` so the app reaches Kafka on `localhost:9094`. The consumer process asks the agent after each saved message.
 
 ```bash
-docker compose up db -d
+docker compose up db kafka -d
 pnpm install
 pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 pnpm dev
+pnpm consume
 ```
 
 `pnpm install` also generates the Prisma client. `pnpm db:generate` is there in case that step was skipped. The client is written to `src/backend/db/prisma/generated` and is not committed.
@@ -38,7 +39,7 @@ pnpm dev
 
 ### Docker Compose
 
-Start Postgres and the app. The container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above.
+Start Postgres, Kafka, the app, and the agent consumer. The app container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above. The consumer uses the same image and reads `chat.messages`.
 
 ```bash
 docker compose up --build
@@ -55,7 +56,8 @@ The app listens on port 3000.
 3. OpenAI model provider
 4. JWT auth
 5. Docker Compose
-6. Tailwind CSS
+6. Kafka
+7. Tailwind CSS
 
 ### How it works
 
