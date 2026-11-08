@@ -115,6 +115,23 @@ export class ChatRepository {
           where: { id: chatId },
           data: { updatedAt: new Date() },
         });
+        const members = await tx.chatMember.findMany({
+          where: { chatId },
+          select: { userId: true },
+        });
+        const payload = JSON.stringify({
+          chatId,
+          memberIds: members.map((member) => member.userId),
+          message: {
+            id: created.id,
+            body: created.body,
+            createdAt: created.createdAt,
+            authorId: created.authorId,
+            authorName: created.author.name,
+          },
+        });
+        // notify for wss stream
+        await tx.$executeRaw`SELECT pg_notify('chat_messages', ${payload})`;
         return created;
       });
     } catch (error) {

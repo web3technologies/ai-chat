@@ -8,36 +8,36 @@ import type { AgentMember, AgentMessage } from "@/backend/services/agent/types";
 
 
 export class Agent {
+  private aiClient: OpenAI | null = null;
 
-  private readonly aiClient: OpenAI
-  
   constructor(
     private readonly users: UserRepository,
-    private readonly memories: MemoryRepository
-  ) {
-    this.users = users
-    this.memories = memories
-    this.aiClient = this.getAIClient()
-  }
+    private readonly memories: MemoryRepository,
+  ) {}
 
   user() {
     return this.users.ensureAgent();
   }
 
-  getAIClient(): OpenAI{
+  private client(): OpenAI | null {
     if (!process.env.OPENAI_API_KEY) {
       console.log("[agent] skipped: OPENAI_API_KEY is not set");
-      throw Error("Agent client not initilialized")
+      return null;
     }
-    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.aiClient ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return this.aiClient;
   }
 
   async consider(messages: AgentMessage[]): Promise<boolean> {
 
+    // get latest message
     const latest = messages.at(-1);
+    // if latest message is the ai agent immediately return false
     if (!latest || latest.author.kind !== "HUMAN") return false;
+    const ai = this.client();
+    if (!ai) return false;
     try {
-      const decision = await this.aiClient.decisions.create({
+      const decision = await ai.decisions.create({
         model: "gpt-6-luna",
         input: messages.map((message) => `${oneLine(message.author.name)}: ${oneLine(message.body)}`).join("\n"),
         questions: [
@@ -86,8 +86,11 @@ export class Agent {
       ? memories.map((memory) => `- ${oneLine(memory.name)}: ${oneLine(memory.content)}`).join("\n")
       : "None";
 
+    const ai = this.client();
+    if (!ai) return null;
+
     try {
-      const response = await this.aiClient.chat.completions.create({
+      const response = await ai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: instructions },
@@ -131,14 +134,14 @@ export class Agent {
   }
 
   async remember(members: AgentMember[], messages: AgentMessage[]) {
-    if (!process.env.OPENAI_API_KEY) return;
+    const ai = this.client();
+    if (!ai) return;
 
     const humans = members.map((member) => member.user).filter((person) => person.kind === "HUMAN" && person.username);
     if (humans.length === 0) return;
 
     try {
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const response = await client.chat.completions.create({
+      const response = await ai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: memoryInstructions },

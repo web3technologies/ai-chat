@@ -105,11 +105,10 @@ describe("ChatService", () => {
         const belongs = chat?.members.some((item) => item.userId === where.chatId_userId.userId);
         return belongs ? where.chatId_userId : null;
       }),
-      findMany: vi.fn(async ({ where }: { where: { chatId: string; user: { kind: Kind } } }) => {
+      findMany: vi.fn(async ({ where }: { where: { chatId: string; user?: { kind: Kind } } }) => {
         const chat = chats.find((item) => item.id === where.chatId);
-        return (chat?.members ?? [])
-          .filter((item) => item.user.kind === where.user.kind)
-          .map((item) => ({ user: item.user }));
+        const members = (chat?.members ?? []).filter((item) => !where.user || item.user.kind === where.user.kind);
+        return members.map((item) => (where.user ? { user: item.user } : { userId: item.userId }));
       }),
       create: vi.fn(async ({ data }: { data: { chatId: string; userId: string } }) => {
         chats.find((item) => item.id === data.chatId)?.members.push(member(data.userId));
@@ -137,6 +136,7 @@ describe("ChatService", () => {
     memory: {
       findMany: vi.fn(async () => []),
     },
+    $executeRaw: vi.fn(async () => 0),
     $transaction: vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(db)),
   };
 

@@ -29,7 +29,34 @@ vi.mock("@/ui/services/chat", () => ({
 }));
 
 import useChat from "@/ui/hooks/useChat";
+import { TOKEN_KEY } from "@/ui/services/client";
 import { chatService } from "@/ui/services/chat";
+
+class FakeSocket {
+  static latest: FakeSocket | null = null;
+  sent: string[] = [];
+  private listeners = new Map<string, Set<(event?: { data?: string }) => void>>();
+
+  constructor(public url: string) {
+    FakeSocket.latest = this;
+  }
+
+  addEventListener(type: string, listener: (event?: { data?: string }) => void) {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(listener);
+    this.listeners.set(type, set);
+  }
+
+  send(data: string) {
+    this.sent.push(data);
+  }
+
+  close() {}
+
+  emit(type: string, event?: { data?: string }) {
+    this.listeners.get(type)?.forEach((listener) => listener(event));
+  }
+}
 
 function message(id: string, body: string): ChatMessage {
   return { id, body, createdAt: "2026-01-01T00:00:00.000Z", authorId: "me", authorName: "Sam" };
@@ -49,6 +76,8 @@ function detail(messages: ChatMessage[]): ChatDetail {
 describe("useChat", () => {
   beforeEach(() => {
     params = { id: ["chat-1"] };
+    FakeSocket.latest = null;
+    localStorage.removeItem(TOKEN_KEY);
     vi.clearAllMocks();
     vi.mocked(chatService.list).mockResolvedValue([]);
     vi.mocked(chatService.get).mockResolvedValue(detail([]));
@@ -82,26 +111,28 @@ describe("useChat", () => {
     expect(result.current.selected?.messages).toEqual([existing]);
   });
 
-  it("keeps a longer transcript when a poll comes back short", async () => {
-    const polls: Array<() => void> = [];
-    const realInterval = global.setInterval.bind(global);
-    const interval = vi.spyOn(global, "setInterval").mockImplementation((handler, timeout, ...args) => {
-      if (timeout === 2000) polls.push(handler as () => void);
-      return realInterval(handler, timeout, ...args);
-    });
-    try {
-      const first = message("m1", "hello");
-      const second = message("m2", "again");
-      vi.mocked(chatService.get).mockResolvedValueOnce(detail([first, second])).mockResolvedValue(detail([first]));
-      const { result } = renderHook(() => useChat());
+  it("appends an agent message from the socket without polling", async () => {
+    vi.stubGlobal("WebSocket", FakeSocket);
+    localStorage.setItem(TOKEN_KEY, "signed");
+    const first = message("m1", "hello");
+    vi.mocked(chatService.get).mockResolvedValue(detail([first]));
+    const { result } = renderHook(() => useChat());
 
-      await waitFor(() => expect(result.current.selected?.messages).toHaveLength(2));
-      polls.forEach((poll) => poll());
-      await waitFor(() => expect(vi.mocked(chatService.get).mock.calls.length).toBeGreaterThan(1));
-      expect(result.current.selected?.messages).toHaveLength(2);
-    } finally {
-      interval.mockRestore();
-    }
+    await waitFor(() => expect(result.current.selected?.messages).toHaveLength(1));
+    await waitFor(() => expect(FakeSocket.latest).not.toBeNull());
+    const socket = FakeSocket.latest;
+    if (!socket) return;
+    act(() => socket.emit("open"));
+    expect(socket.sent).toEqual([JSON.stringify({ type: "auth", token: "signed" })]);
+
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "message", chatId: "chat-1", message: message("m2", "68") }),
+      }),
+    );
+
+    expect(result.current.selected?.messages.map((item) => item.body)).toEqual(["hello", "68"]);
+    expect(chatService.get).toHaveBeenCalledOnce();
   });
 
   it("returns false and records an error when send fails", async () => {

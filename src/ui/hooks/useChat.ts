@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/ui/context/auth";
-import { chatService, type ChatDetail, type ChatSummary, type CreateChatInput } from "@/ui/services/chat";
+import { TOKEN_KEY } from "@/ui/services/client";
+import { chatService, type ChatDetail, type ChatMessage, type ChatSummary, type CreateChatInput } from "@/ui/services/chat";
 
 export type { ChatDetail, ChatMember, ChatMessage, ChatSummary, CreateChatInput } from "@/ui/services/chat";
 
@@ -43,10 +44,8 @@ export default function useChat() {
     };
 
     void load();
-    const timer = setInterval(() => void load(), 2000);
     return () => {
       cancelled = true;
-      clearInterval(timer);
     };
   }, [loading, user]);
 
@@ -71,12 +70,97 @@ export default function useChat() {
     };
 
     void load();
-    const timer = setInterval(() => void load(), 2000);
     return () => {
       cancelled = true;
-      clearInterval(timer);
     };
   }, [selectedId]);
+
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  useEffect(() => {
+    if (loading || !user) return;
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const loadList = async () => {
+      try {
+        const next = await chatService.list();
+        if (!stopped) setChats(next);
+      } catch (cause: unknown) {
+        if (!stopped) setError(cause instanceof Error ? cause.message : "Request failed");
+      }
+    };
+
+    const loadOpen = async (id: string) => {
+      try {
+        const chat = await chatService.get(id);
+        if (stopped) return;
+        setSelected((current) => {
+          if (current?.id === chat.id && current.messages.length > chat.messages.length) return current;
+          return chat;
+        });
+      } catch (cause: unknown) {
+        if (!stopped) setError(cause instanceof Error ? cause.message : "Request failed");
+      }
+    };
+
+    const receive = (chatId: string, message: ChatMessage) => {
+      setSelected((current) => {
+        if (!current || current.id !== chatId) return current;
+        if (current.messages.some((item) => item.id === message.id)) return current;
+        return { ...current, latestMessage: message, messages: [...current.messages, message] };
+      });
+      let missing = false;
+      setChats((current) => {
+        const index = current.findIndex((chat) => chat.id === chatId);
+        if (index < 0) {
+          missing = true;
+          return current;
+        }
+        const next = current.map((chat) => (chat.id === chatId ? { ...chat, latestMessage: message } : chat));
+        if (index === 0) return next;
+        const [chat] = next.splice(index, 1);
+        return [chat, ...next];
+      });
+      if (missing) void loadList();
+    };
+
+    const connect = () => {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token || stopped) return;
+      socket = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001");
+      socket.addEventListener("open", () => {
+        socket?.send(JSON.stringify({ type: "auth", token }));
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          const data = JSON.parse(String(event.data)) as { type?: string; chatId?: string; message?: ChatMessage };
+          if (data.type !== "message" || !data.chatId || !data.message) return;
+          receive(data.chatId, data.message);
+        } catch {
+          // Ignore a frame that is not a chat message.
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (stopped) return;
+        reconnectTimer = setTimeout(() => {
+          void loadList();
+          const open = selectedIdRef.current;
+          if (open) void loadOpen(open);
+          connect();
+        }, 1000);
+      });
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [loading, user]);
 
   const selectChat = useCallback(
     (id: string | null) => {

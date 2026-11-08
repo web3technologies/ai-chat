@@ -82,5 +82,21 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       KAFKA_BROKERS: kafka:9092
 
+  realtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/realtime/run.ts"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    ports:
+      - "3001:3001"
+
 volumes:
   ai_chat_pg:

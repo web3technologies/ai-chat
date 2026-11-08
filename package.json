@@ -13,6 +13,7 @@
     "db:migrate": "prisma generate && prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "consume": "node --conditions=react-server --import tsx src/backend/consumers/run.ts",
+    "realtime": "node --conditions=react-server --import tsx src/backend/realtime/run.ts",
     "db:seed": "tsx scripts/seedUsers.ts",
     "db:clear-chats": "tsx scripts/clearChats.ts"
   },
@@ -26,7 +27,8 @@
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -37,6 +39,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.2",
     "dotenv": "^18.0.8",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
