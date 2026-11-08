@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { create } = vi.hoisted(() => ({ create: vi.fn() }));
+const { create, decide } = vi.hoisted(() => ({ create: vi.fn(), decide: vi.fn() }));
 
 vi.mock("openai", () => ({
   default: class OpenAI {
     chat = { completions: { create } };
+    decisions = { create: decide };
   },
 }));
 
@@ -15,6 +16,10 @@ import { instructions } from "@/backend/services/agent/prompt";
 
 function completion(content: string | null) {
   return { choices: [{ message: { content } }] };
+}
+
+function predicate(probability: number) {
+  return { answers: [{ type: "predicate", name: "should_reply", probability }] };
 }
 
 function message(name: string, kind: "HUMAN" | "AGENT", body: string) {
@@ -79,6 +84,7 @@ describe("Agent", () => {
   beforeEach(() => {
     memories.splice(0, memories.length);
     create.mockReset();
+    decide.mockReset();
     process.env.OPENAI_API_KEY = "test-key";
   });
 
@@ -89,31 +95,58 @@ describe("Agent", () => {
 
   it("stays quiet and stores nothing without an API key", async () => {
     delete process.env.OPENAI_API_KEY;
-    await expect(agent.consider([], [])).resolves.toBeNull();
+    await expect(agent.consider([])).resolves.toBe(false);
+    await expect(agent.reply([], [])).resolves.toBeNull();
     await agent.remember(room([{ name: "Sam", content: "likes pizza" }]), []);
+    expect(decide).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(db.memory.create).not.toHaveBeenCalled();
   });
 
-  it.each([null, "", "null"])("stays quiet when the reply is %j", async (reply) => {
-    create.mockResolvedValue(completion(JSON.stringify({ reply })));
-    await expect(
-      agent.consider([message("Sam", "HUMAN", "Agent, hey")], []),
-    ).resolves.toBeNull();
+  it("asks the decision model whether the latest message is for the agent", async () => {
+    decide.mockResolvedValue(predicate(0.91));
+    const messages = [
+      message("Alex", "HUMAN", "Hmm agent any thoughts?"),
+      message("Agent", "AGENT", "Try a burger place."),
+      message("Sam", "HUMAN", "Agent, what time?"),
+    ];
+
+    await expect(agent.consider(messages)).resolves.toBe(true);
+    expect(decide).toHaveBeenCalledWith({
+      model: "gpt-6-luna",
+      input: "Alex: Hmm agent any thoughts?\nAgent: Try a burger place.\nSam: Agent, what time?",
+      questions: [
+        {
+          type: "predicate",
+          name: "should_reply",
+          instructions:
+            "The latest message is a question or request for the agent named Agent, and the agent should answer it.",
+        },
+      ],
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
-  it("stays quiet without calling the model when the latest message is not for the agent", async () => {
-    await expect(
-      agent.consider(
-        [
-          message("Alex", "HUMAN", "Hmm agent any thoughts?"),
-          message("Agent", "AGENT", "Try a burger place."),
-          message("Alex", "HUMAN", "What time you wanna go Sam?"),
-        ],
-        [],
-      ),
-    ).resolves.toBeNull();
+  it("stays quiet when the decision is below the threshold, refused, or unavailable", async () => {
+    decide.mockResolvedValueOnce(predicate(0.69));
+    await expect(agent.consider([message("Sam", "HUMAN", "what time?")])).resolves.toBe(false);
+
+    decide.mockResolvedValueOnce({ answers: [{ type: "refusal", name: "should_reply" }] });
+    await expect(agent.consider([message("Sam", "HUMAN", "Agent, hey")])).resolves.toBe(false);
+
+    decide.mockRejectedValueOnce(new Error("down"));
+    await expect(agent.consider([message("Sam", "HUMAN", "Agent, hey")])).resolves.toBe(false);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet without a decision when the latest message is from the agent", async () => {
+    await expect(agent.consider([message("Agent", "AGENT", "Try a burger place.")])).resolves.toBe(false);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "", "null"])("returns nothing when the reply is %j", async (reply) => {
+    create.mockResolvedValue(completion(JSON.stringify({ reply })));
+    await expect(agent.reply([message("Sam", "HUMAN", "Agent, hey")], [])).resolves.toBeNull();
   });
 
   it("drops a reply that is JSON instead of a sentence", async () => {
@@ -124,14 +157,12 @@ describe("Agent", () => {
         }),
       ),
     );
-    await expect(
-      agent.consider([message("Sam", "HUMAN", "Agent, what time?")], []),
-    ).resolves.toBeNull();
+    await expect(agent.reply([message("Sam", "HUMAN", "Agent, what time?")], [])).resolves.toBeNull();
   });
 
   it("sends each turn as its own message", async () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "68" })));
-    await agent.consider(
+    await agent.reply(
       [
         message("Sam", "HUMAN", "hey"),
         message("Agent", "AGENT", "hi"),
@@ -151,16 +182,12 @@ describe("Agent", () => {
 
   it("returns a trimmed reply", async () => {
     create.mockResolvedValue(completion(JSON.stringify({ reply: "  68  " })));
-    await expect(
-      agent.consider([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], []),
-    ).resolves.toBe("68");
+    await expect(agent.reply([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], [])).resolves.toBe("68");
   });
 
-  it("stays quiet when the request throws", async () => {
+  it("returns nothing when the reply request throws", async () => {
     create.mockRejectedValue(new Error("down"));
-    await expect(
-      agent.consider([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], []),
-    ).resolves.toBeNull();
+    await expect(agent.reply([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], [])).resolves.toBeNull();
   });
 
   it("stores a new fact and skips duplicates, unknown people, and an empty room", async () => {
@@ -241,13 +268,13 @@ describe("Agent", () => {
       kind: "HUMAN" as const,
       memories: [],
     };
-    await agent.consider([message("Jordan", "HUMAN", "Agent, where does Sam live?")], [
+    await agent.reply([message("Jordan", "HUMAN", "Agent, where does Sam live?")], [
       { user: sam },
       { user: jordan },
     ]);
     expect(create.mock.calls[1][0].messages[1].content).toBe("Quoted facts:\n- Sam: lives in Austin");
 
-    await agent.consider(
+    await agent.reply(
       [message("Alex", "HUMAN", "Agent, where does Sam live?")],
       [{ user: sam }, { user: jordan }, { user: { ...jordan, id: "user-alex", username: "alex", name: "Alex" } }],
     );

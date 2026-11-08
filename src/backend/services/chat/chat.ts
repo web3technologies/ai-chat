@@ -106,11 +106,14 @@ export class ChatService {
         await this.chats.addMember(chatId, assistant.id);
       }
 
-      const reply = await this.assistant.consider(chat.messages, chat.members);
-      await this.assistant.remember(chat.members, chat.messages);
-      if (!reply) return null;
+      const shouldReply = await this.assistant.consider(chat.messages);
+      if (!shouldReply) return null;
 
-      const created = await this.chats.saveMessage(chatId, assistant.id, reply);
+      const body = await this.assistant.reply(chat.messages, chat.members);
+      if (!body) return null;
+
+      await this.assistant.remember(chat.members, chat.messages);
+      const created = await this.chats.saveMessage(chatId, assistant.id, body);
       if (!created) return null;
       return this.toMessage(created);
     } catch {

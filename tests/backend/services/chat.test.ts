@@ -143,7 +143,8 @@ describe("ChatService", () => {
   const tokens = { userIdFromRequest: vi.fn(async () => "me" as string | null) };
   const assistant = {
     user: vi.fn(async () => users.get("agent")),
-    consider: vi.fn(async () => null as string | null),
+    consider: vi.fn(async () => false),
+    reply: vi.fn(async () => null as string | null),
     remember: vi.fn(async () => undefined),
   };
   const service = new ChatService(
@@ -162,7 +163,8 @@ describe("ChatService", () => {
     users.set("alex", { id: "alex", username: "alex", name: "Alex", kind: "HUMAN" });
     users.set("agent", { id: "agent", username: "agent", name: "Agent", kind: "AGENT" });
     tokens.userIdFromRequest.mockResolvedValue("me");
-    assistant.consider.mockResolvedValue(null);
+    assistant.consider.mockResolvedValue(false);
+    assistant.reply.mockResolvedValue(null);
     vi.clearAllMocks();
   });
 
@@ -260,7 +262,8 @@ describe("ChatService", () => {
       members: [member("me"), member("jordan"), member("agent")],
       messages: [],
     });
-    assistant.consider.mockResolvedValue("68");
+    assistant.consider.mockResolvedValue(true);
+    assistant.reply.mockResolvedValue("68");
 
     const result = await service.send(request({ body: " what is 17 times 4 " }), "chat-1");
 
@@ -275,6 +278,8 @@ describe("ChatService", () => {
     expect(reply?.body).toBe("68");
     expect(reply?.authorName).toBe("Agent");
     expect(assistant.consider).toHaveBeenCalledOnce();
+    expect(assistant.reply).toHaveBeenCalledOnce();
+    expect(assistant.remember).toHaveBeenCalledOnce();
   });
 
   it("skips a second reply when the newest message is already from the agent", async () => {
@@ -299,6 +304,21 @@ describe("ChatService", () => {
     expect(assistant.consider).not.toHaveBeenCalled();
   });
 
+  it("skips the reply when the decision is no", async () => {
+    chats.push({
+      id: "chat-1",
+      kind: "DM",
+      name: null,
+      members: [member("me"), member("agent")],
+      messages: [],
+    });
+
+    await expect(service.reply("chat-1")).resolves.toBeNull();
+    expect(assistant.consider).toHaveBeenCalledOnce();
+    expect(assistant.reply).not.toHaveBeenCalled();
+    expect(assistant.remember).not.toHaveBeenCalled();
+  });
+
   it("keeps the human message when the agent throws", async () => {
     chats.push({
       id: "chat-1",
@@ -307,7 +327,8 @@ describe("ChatService", () => {
       members: [member("me"), member("agent")],
       messages: [],
     });
-    assistant.consider.mockRejectedValue(new Error("down"));
+    assistant.consider.mockResolvedValue(true);
+    assistant.reply.mockRejectedValue(new Error("down"));
 
     const result = await service.send(request({ body: "hello" }), "chat-1");
     const reply = await service.reply("chat-1");

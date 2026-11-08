@@ -17,15 +17,46 @@ export class Agent {
     return this.users.ensureAgent();
   }
 
-  async consider(messages: AgentMessage[], members: AgentMember[]): Promise<string | null> {
+  async consider(messages: AgentMessage[]): Promise<boolean> {
     if (!process.env.OPENAI_API_KEY) {
       console.log("[agent] skipped: OPENAI_API_KEY is not set");
-      return null;
+      return false;
     }
 
     const latest = messages.at(-1);
-    if (!latest || latest.author.kind !== "HUMAN" || !/\bagent\b/i.test(latest.body)) {
-      console.log("[agent] decision: stay quiet, not addressed");
+    if (!latest || latest.author.kind !== "HUMAN") return false;
+
+    try {
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const decision = await client.decisions.create({
+        model: "gpt-6-luna",
+        input: messages.map((message) => `${oneLine(message.author.name)}: ${oneLine(message.body)}`).join("\n"),
+        questions: [
+          {
+            type: "predicate",
+            name: "should_reply",
+            instructions:
+              "The latest message is a question or request for the agent named Agent, and the agent should answer it.",
+          },
+        ],
+      });
+      const answer = decision.answers[0];
+      if (!answer || answer.type !== "predicate") {
+        console.log("[agent] decision: stay quiet");
+        return false;
+      }
+      const shouldReply = answer.probability >= 0.7;
+      console.log(`[agent] decision: ${shouldReply ? "reply" : "stay quiet"} (${answer.probability})`);
+      return shouldReply;
+    } catch (error) {
+      console.error("[agent] decision failed", error);
+      return false;
+    }
+  }
+
+  async reply(messages: AgentMessage[], members: AgentMember[]): Promise<string | null> {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log("[agent] skipped: OPENAI_API_KEY is not set");
       return null;
     }
 
@@ -38,7 +69,7 @@ export class Agent {
         : [],
     );
 
-    console.log(`[agent] considering ${messages.length} messages`);
+    console.log(`[agent] replying to ${messages.length} messages`);
     for (const memory of memories) {
       console.log(`[agent] memory ${memory.name}: ${memory.content}`);
     }
@@ -68,7 +99,7 @@ export class Agent {
               type: "object",
               additionalProperties: false,
               properties: {
-                reply: { type: ["string", "null"] },
+                reply: { type: "string" },
               },
               required: ["reply"],
             },
@@ -78,17 +109,16 @@ export class Agent {
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        console.log("[agent] decision: stay quiet, empty response");
+        console.log("[agent] reply: empty response");
         return null;
       }
       const parsed = JSON.parse(content) as { reply?: unknown };
       const reply = plainReply(parsed.reply);
-      console.log("parsed", parsed);
       if (!reply) {
-        console.log("[agent] decision: stay quiet");
+        console.log("[agent] reply: empty");
         return null;
       }
-      console.log(`[agent] decision: reply: ${reply}`);
+      console.log(`[agent] reply: ${reply}`);
       return reply;
     } catch (error) {
       console.error("[agent] request failed", error);
