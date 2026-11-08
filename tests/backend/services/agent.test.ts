@@ -46,20 +46,26 @@ function room(facts: { name: string; content: string }[] = []) {
 
 describe("Agent", () => {
   const memories: {
+    id: string;
     userId: string;
     content: string;
     visibility: "PRIVATE" | "PARTICIPANTS";
+    status: "ACTIVE" | "SUPERSEDED";
+    replacesId?: string;
     audience: { create: { userId: string }[] };
   }[] = [];
   const db = {
     memory: {
-      findMany: vi.fn(async () =>
-        memories.map((memory) => ({
-          userId: memory.userId,
-          content: memory.content,
-          visibility: memory.visibility,
-          audience: memory.audience.create,
-        })),
+      findMany: vi.fn(async ({ where }: { where?: { status?: "ACTIVE" | "SUPERSEDED" } } = {}) =>
+        memories
+          .filter((memory) => !where?.status || memory.status === where.status)
+          .map((memory) => ({
+            id: memory.id,
+            userId: memory.userId,
+            content: memory.content,
+            visibility: memory.visibility,
+            audience: memory.audience.create,
+          })),
       ),
       create: vi.fn(
         async ({
@@ -69,13 +75,21 @@ describe("Agent", () => {
             userId: string;
             content: string;
             visibility: "PRIVATE" | "PARTICIPANTS";
+            replacesId?: string;
             audience: { create: { userId: string }[] };
           };
         }) => {
-          memories.push(data);
-          return data;
+          const row = { id: `memory-${memories.length + 1}`, status: "ACTIVE" as const, ...data };
+          memories.push(row);
+          return row;
         },
       ),
+      update: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const row = memories.find((memory) => memory.id === where.id);
+        if (!row) return null;
+        row.status = "SUPERSEDED";
+        return row;
+      }),
     },
   };
   const agent = new Agent(new UserRepository(db as never), new MemoryRepository(db as never));
@@ -197,10 +211,10 @@ describe("Agent", () => {
     create.mockResolvedValue(
       completion(
         JSON.stringify({
-          memories: [
-            { username: "sam", content: " likes pizza " },
-            { username: "sam", content: "Likes Pizza" },
-            { username: "missing", content: "lives on the moon" },
+          operations: [
+            { op: "add", id: "", username: "sam", content: " likes pizza " },
+            { op: "add", id: "", username: "sam", content: "Likes Pizza" },
+            { op: "add", id: "", username: "missing", content: "lives on the moon" },
           ],
         }),
       ),
@@ -216,6 +230,8 @@ describe("Agent", () => {
 
     expect(memories).toEqual([
       {
+        id: "memory-1",
+        status: "ACTIVE",
         userId: "user-sam",
         content: "likes pizza",
         visibility: "PRIVATE",
@@ -224,8 +240,61 @@ describe("Agent", () => {
     ]);
   });
 
+  it("replaces a fact the person changed and deletes one they took back", async () => {
+    memories.push({
+      id: "memory-pizza",
+      userId: "user-sam",
+      content: "likes pizza",
+      visibility: "PRIVATE",
+      status: "ACTIVE",
+      audience: { create: [{ userId: "user-sam" }] },
+    });
+    const room = [{ user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN" as const, memories: [] } }];
+
+    create.mockResolvedValue(
+      completion(
+        JSON.stringify({
+          operations: [{ op: "replace", id: "memory-pizza", username: "sam", content: "hates pizza" }],
+        }),
+      ),
+    );
+    await agent.remember(room, [message("Sam", "HUMAN", "I hate pizza")]);
+
+    expect(memories.map(({ id, status, content, replacesId }) => ({ id, status, content, replacesId }))).toEqual([
+      { id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza", replacesId: undefined },
+      { id: "memory-2", status: "ACTIVE", content: "hates pizza", replacesId: "memory-pizza" },
+    ]);
+
+    memories.splice(0, memories.length, {
+      id: "memory-pizza",
+      userId: "user-sam",
+      content: "likes pizza",
+      visibility: "PRIVATE",
+      status: "ACTIVE",
+      audience: { create: [{ userId: "user-sam" }] },
+    });
+    create.mockResolvedValue(
+      completion(
+        JSON.stringify({
+          operations: [{ op: "delete", id: "memory-pizza", username: "", content: "" }],
+        }),
+      ),
+    );
+    await agent.remember(room, [message("Sam", "HUMAN", "Never mind about pizza")]);
+
+    expect(memories).toEqual([
+      expect.objectContaining({ id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza" }),
+    ]);
+  });
+
   it("shares a fact with the people in the room and keeps a private fact out of a larger room", async () => {
-    create.mockResolvedValue(completion(JSON.stringify({ memories: [{ username: "sam", content: "lives in Austin" }] })));
+    create.mockResolvedValue(
+      completion(
+        JSON.stringify({
+          operations: [{ op: "add", id: "", username: "sam", content: "lives in Austin" }],
+        }),
+      ),
+    );
     await agent.remember(
       [
         { user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] } },
@@ -235,6 +304,8 @@ describe("Agent", () => {
     );
     expect(memories).toEqual([
       {
+        id: "memory-1",
+        status: "ACTIVE",
         userId: "user-sam",
         content: "lives in Austin",
         visibility: "PARTICIPANTS",

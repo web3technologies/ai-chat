@@ -140,7 +140,29 @@ export class Agent {
     const humans = members.map((member) => member.user).filter((person) => person.kind === "HUMAN" && person.username);
     if (humans.length === 0) return;
 
+    const humanIds = humans.map((person) => person.id);
+    const visibility = humanIds.length === 1 ? "PRIVATE" : "PARTICIPANTS";
+
     try {
+      const existing = await this.memories.listForUsers(humanIds);
+      const active = new Map(
+        existing.map((memory) => [
+          memory.id,
+          {
+            id: memory.id,
+            userId: memory.userId,
+            content: memory.content,
+            visibility: memory.visibility,
+            audienceIds: memory.audience.map((person) => person.userId),
+          },
+        ]),
+      );
+      const knownFacts = [...active.values()].flatMap((memory) => {
+        const person = humans.find((candidate) => candidate.id === memory.userId);
+        if (!person?.username) return [];
+        return [`${memory.id} ${person.username}: ${oneLine(memory.content)}`];
+      });
+
       const response = await ai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -149,7 +171,7 @@ export class Agent {
             role: "user",
             content: `Quoted people:\n${humans
               .map((person) => `${oneLine(person.name)} (${oneLine(person.username ?? "")})`)
-              .join("\n")}`,
+              .join("\n")}\n\nKnown facts:\n${knownFacts.length ? knownFacts.join("\n") : "None"}`,
           },
           ...messages.map((message) =>
             chatMessage(
@@ -162,26 +184,28 @@ export class Agent {
         response_format: {
           type: "json_schema",
           json_schema: {
-            name: "agent_memories",
+            name: "agent_memory_operations",
             strict: true,
             schema: {
               type: "object",
               additionalProperties: false,
               properties: {
-                memories: {
+                operations: {
                   type: "array",
                   items: {
                     type: "object",
                     additionalProperties: false,
                     properties: {
+                      op: { type: "string", enum: ["add", "replace", "delete"] },
+                      id: { type: "string" },
                       username: { type: "string" },
                       content: { type: "string" },
                     },
-                    required: ["username", "content"],
+                    required: ["op", "id", "username", "content"],
                   },
                 },
               },
-              required: ["memories"],
+              required: ["operations"],
             },
           },
         },
@@ -193,34 +217,67 @@ export class Agent {
         return;
       }
 
-      const parsed = JSON.parse(content) as { memories?: { username?: unknown; content?: unknown }[] };
-      const humanIds = humans.map((person) => person.id);
-      const visibility = humanIds.length === 1 ? "PRIVATE" : "PARTICIPANTS";
-      const existing = await this.memories.listForUsers(humanIds);
-      const known = new Set(
-        existing.map((memory) =>
-          memoryKey(
-            memory.userId,
-            memory.content,
-            memory.visibility,
-            memory.audience.map((person) => person.userId),
-          ),
-        ),
-      );
+      const parsed = JSON.parse(content) as {
+        operations?: { op?: unknown; id?: unknown; username?: unknown; content?: unknown }[];
+      };
       let stored = 0;
 
-      for (const memory of parsed.memories ?? []) {
-        if (typeof memory.username !== "string" || typeof memory.content !== "string") continue;
-        const contentText = memory.content.trim();
+      for (const operation of parsed.operations ?? []) {
+        if (operation.op === "delete" || operation.op === "replace") {
+          const current = typeof operation.id === "string" ? active.get(operation.id) : undefined;
+          const owner = humans.find((person) => person.id === current?.userId);
+          if (!current || !owner) continue;
+
+          if (operation.op === "delete") {
+            await this.memories.supersede(current.id);
+            active.delete(current.id);
+            stored += 1;
+            console.log(`[agent] memory: forgot ${owner.name}: ${current.content}`);
+            continue;
+          }
+
+          const named = typeof operation.username === "string" ? operation.username.trim().toLowerCase() : "";
+          if (!named || named !== owner.username?.toLowerCase()) continue;
+          if (typeof operation.content !== "string") continue;
+          const contentText = operation.content.trim();
+          if (!contentText || contentText.length > MEMORY_MAX) continue;
+          if (contentText.toLowerCase() === current.content.trim().toLowerCase()) continue;
+          await this.memories.supersede(current.id);
+          active.delete(current.id);
+          const created = await this.memories.create(owner.id, contentText, visibility, humanIds, current.id);
+          active.set(created.id, {
+            id: created.id,
+            userId: owner.id,
+            content: contentText,
+            visibility,
+            audienceIds: humanIds,
+          });
+          stored += 1;
+          console.log(`[agent] memory: ${owner.name}: ${contentText}`);
+          continue;
+        }
+
+        if (operation.op !== "add") continue;
+        if (typeof operation.username !== "string" || typeof operation.content !== "string") continue;
+        const contentText = operation.content.trim();
         if (!contentText || contentText.length > MEMORY_MAX) continue;
         const person = humans.find(
-          (candidate) => candidate.username?.toLowerCase() === memory.username?.toString().toLowerCase(),
+          (candidate) => candidate.username?.toLowerCase() === operation.username?.toString().toLowerCase(),
         );
         if (!person) continue;
         const key = memoryKey(person.id, contentText, visibility, humanIds);
-        if (known.has(key)) continue;
-        known.add(key);
-        await this.memories.create(person.id, contentText, visibility, humanIds);
+        const duplicate = [...active.values()].some(
+          (memory) => memoryKey(memory.userId, memory.content, memory.visibility, memory.audienceIds) === key,
+        );
+        if (duplicate) continue;
+        const created = await this.memories.create(person.id, contentText, visibility, humanIds);
+        active.set(created.id, {
+          id: created.id,
+          userId: person.id,
+          content: contentText,
+          visibility,
+          audienceIds: humanIds,
+        });
         stored += 1;
         console.log(`[agent] memory: ${person.name}: ${contentText}`);
       }

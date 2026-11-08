@@ -93,7 +93,14 @@ export class ChatRepository {
       include: {
         members: {
           include: {
-            user: { include: { memories: { include: { audience: { select: { userId: true } } } } } },
+            user: {
+              include: {
+                memories: {
+                  where: { status: "ACTIVE" },
+                  include: { audience: { select: { userId: true } } },
+                },
+              },
+            },
           },
         },
         messages: {

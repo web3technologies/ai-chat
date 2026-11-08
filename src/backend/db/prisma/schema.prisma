@@ -69,17 +69,23 @@ model Message {
 }
 
 model Memory {
-  id         String           @id @default(cuid())
-  userId     String
-  content    String
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  visibility MemoryVisibility @default(PARTICIPANTS)
+  id           String           @id @default(cuid())
+  userId       String
+  content      String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  visibility   MemoryVisibility @default(PARTICIPANTS)
+  status       MemoryStatus     @default(ACTIVE)
+  supersededAt DateTime?
+  replacesId   String?
 
-  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  audience MemoryAudience[]
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience   MemoryAudience[]
+  replaces   Memory?          @relation("MemoryReplacement", fields: [replacesId], references: [id], onDelete: SetNull)
+  replacedBy Memory[]         @relation("MemoryReplacement")
 
   @@index([userId])
+  @@index([replacesId])
 }
 
 model MemoryAudience {
@@ -96,4 +102,9 @@ model MemoryAudience {
 enum MemoryVisibility {
   PRIVATE
   PARTICIPANTS
+}
+
+enum MemoryStatus {
+  ACTIVE
+  SUPERSEDED
 }
