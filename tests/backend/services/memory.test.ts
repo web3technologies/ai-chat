@@ -38,7 +38,7 @@ describe("MemoryService", () => {
     findForAgent.mockReset();
     findForAgent.mockResolvedValue(null);
     assistant.remember.mockReset();
-    assistant.remember.mockResolvedValue(undefined);
+    assistant.remember.mockResolvedValue([]);
     rows.splice(0, rows.length, {
       id: "m1",
       userId: "sam",
@@ -101,6 +101,148 @@ describe("MemoryService", () => {
     await service.rememberMessage("chat-1", "message-human");
 
     expect(assistant.remember).toHaveBeenCalledOnce();
-    expect(assistant.remember).toHaveBeenCalledWith(chat.members, [human]);
+    expect(assistant.remember).toHaveBeenCalledWith(chat.members, [human], []);
+  });
+});
+
+describe("MemoryService operations", () => {
+  type Stored = {
+    id: string;
+    userId: string;
+    content: string;
+    visibility: "PRIVATE" | "PARTICIPANTS";
+    status: "ACTIVE" | "SUPERSEDED";
+    replacesId?: string;
+    audience: { userId: string }[] | { create: { userId: string }[] };
+  };
+  const stored: Stored[] = [];
+  const db = {
+    memory: {
+      findMany: vi.fn(async ({ where }: { where?: { status?: string; userId?: { in?: string[] } } } = {}) =>
+        stored
+          .filter((memory) => !where?.status || memory.status === where.status)
+          .filter((memory) => !where?.userId?.in || where.userId.in.includes(memory.userId))
+          .map((memory) => ({
+            id: memory.id,
+            userId: memory.userId,
+            content: memory.content,
+            visibility: memory.visibility,
+            audience: Array.isArray(memory.audience) ? memory.audience : memory.audience.create,
+          })),
+      ),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            userId: string;
+            content: string;
+            visibility: "PRIVATE" | "PARTICIPANTS";
+            replacesId?: string;
+            audience: { create: { userId: string }[] };
+          };
+        }) => {
+          const row = { id: `memory-${stored.length + 1}`, status: "ACTIVE" as const, ...data };
+          stored.push(row);
+          return row;
+        },
+      ),
+      update: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const row = stored.find((memory) => memory.id === where.id);
+        if (!row) return null;
+        row.status = "SUPERSEDED";
+        return row;
+      }),
+    },
+  };
+  const findForAgent = vi.fn();
+  const assistant = { remember: vi.fn(async () => [] as { op: string; id: string; username: string; content: string }[]) };
+  const service = new MemoryService(
+    new MemoryRepository(db as never),
+    { findForAgent } as unknown as ChatRepository,
+    assistant as unknown as Agent,
+  );
+  const sam = { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN" as const, memories: [] };
+
+  beforeEach(() => {
+    stored.splice(0, stored.length);
+    assistant.remember.mockReset();
+  });
+
+  function chat(body: string) {
+    return {
+      members: [{ user: sam }],
+      messages: [{ id: "message-human", body, author: { kind: "HUMAN" as const } }],
+    };
+  }
+
+  it("adds a fact, skips an exact repeat, replaces a changed fact, and deletes one taken back", async () => {
+    findForAgent.mockResolvedValue(chat("I like pizza"));
+    assistant.remember.mockResolvedValue([
+      { op: "add", id: "", username: "sam", content: " likes pizza " },
+      { op: "add", id: "", username: "sam", content: "Likes Pizza" },
+      { op: "add", id: "", username: "missing", content: "lives on the moon" },
+    ]);
+
+    await service.rememberMessage("chat-1", "message-human");
+
+    expect(stored).toEqual([
+      expect.objectContaining({
+        id: "memory-1",
+        status: "ACTIVE",
+        userId: "user-sam",
+        content: "likes pizza",
+        visibility: "PRIVATE",
+      }),
+    ]);
+
+    stored.splice(0, stored.length, {
+      id: "memory-pizza",
+      userId: "user-sam",
+      content: "likes pizza",
+      visibility: "PRIVATE",
+      status: "ACTIVE",
+      audience: [{ userId: "user-sam" }],
+    });
+    assistant.remember.mockResolvedValue([{ op: "replace", id: "memory-pizza", username: "sam", content: "hates pizza" }]);
+    await service.rememberMessage("chat-1", "message-human");
+    expect(stored.map(({ id, status, content, replacesId }) => ({ id, status, content, replacesId }))).toEqual([
+      { id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza", replacesId: undefined },
+      { id: "memory-2", status: "ACTIVE", content: "hates pizza", replacesId: "memory-pizza" },
+    ]);
+
+    stored.splice(0, stored.length, {
+      id: "memory-pizza",
+      userId: "user-sam",
+      content: "likes pizza",
+      visibility: "PRIVATE",
+      status: "ACTIVE",
+      audience: [{ userId: "user-sam" }],
+    });
+    assistant.remember.mockResolvedValue([{ op: "delete", id: "memory-pizza", username: "", content: "" }]);
+    await service.rememberMessage("chat-1", "message-human");
+    expect(stored).toEqual([
+      expect.objectContaining({ id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza" }),
+    ]);
+  });
+
+  it("shares a new fact with everyone in the room", async () => {
+    const jordan = { id: "user-jordan", username: "jordan", name: "Jordan", kind: "HUMAN" as const, memories: [] };
+    findForAgent.mockResolvedValue({
+      members: [{ user: sam }, { user: jordan }],
+      messages: [{ id: "message-human", body: "I live in Austin", author: { kind: "HUMAN" as const } }],
+    });
+    assistant.remember.mockResolvedValue([{ op: "add", id: "", username: "sam", content: "lives in Austin" }]);
+
+    await service.rememberMessage("chat-1", "message-human");
+
+    expect(stored).toEqual([
+      expect.objectContaining({
+        userId: "user-sam",
+        content: "lives in Austin",
+        visibility: "PARTICIPANTS",
+        audience: { create: [{ userId: "user-sam" }, { userId: "user-jordan" }] },
+      }),
+    ]);
   });
 });

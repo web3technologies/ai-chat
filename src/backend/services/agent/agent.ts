@@ -1,19 +1,18 @@
 import "server-only";
 import OpenAI from "openai";
-import { MEMORY_MAX } from "@/backend/limits";
-import { memoryRepository, type MemoryRepository } from "@/backend/repositories/memory";
 import { userRepository, type UserRepository } from "@/backend/repositories/user";
 import { instructions, memoryInstructions } from "@/backend/services/agent/prompt";
 import type { AgentMember, AgentMessage } from "@/backend/services/agent/types";
 
 
+export type MemoryFact = { id: string; username: string; content: string };
+
+export type MemoryOperation = { op?: unknown; id?: unknown; username?: unknown; content?: unknown };
+
 export class Agent {
   private aiClient: OpenAI | null = null;
 
-  constructor(
-    private readonly users: UserRepository,
-    private readonly memories: MemoryRepository,
-  ) {}
+  constructor(private readonly users: UserRepository) {}
 
   user() {
     return this.users.ensureAgent();
@@ -133,36 +132,16 @@ export class Agent {
     }
   }
 
-  async remember(members: AgentMember[], messages: AgentMessage[]) {
+  async remember(members: AgentMember[], messages: AgentMessage[], facts: MemoryFact[] = []): Promise<MemoryOperation[]> {
     const ai = this.client();
-    if (!ai) return;
+    if (!ai) return [];
 
     const humans = members.map((member) => member.user).filter((person) => person.kind === "HUMAN" && person.username);
-    if (humans.length === 0) return;
+    if (humans.length === 0) return [];
 
-    const humanIds = humans.map((person) => person.id);
-    const visibility = humanIds.length === 1 ? "PRIVATE" : "PARTICIPANTS";
+    const knownFacts = facts.map((fact) => `${fact.id} ${fact.username}: ${oneLine(fact.content)}`);
 
     try {
-      const existing = await this.memories.listForUsers(humanIds);
-      const active = new Map(
-        existing.map((memory) => [
-          memory.id,
-          {
-            id: memory.id,
-            userId: memory.userId,
-            content: memory.content,
-            visibility: memory.visibility,
-            audienceIds: memory.audience.map((person) => person.userId),
-          },
-        ]),
-      );
-      const knownFacts = [...active.values()].flatMap((memory) => {
-        const person = humans.find((candidate) => candidate.id === memory.userId);
-        if (!person?.username) return [];
-        return [`${memory.id} ${person.username}: ${oneLine(memory.content)}`];
-      });
-
       const response = await ai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -212,77 +191,10 @@ export class Agent {
       });
 
       const content = response.choices[0]?.message?.content;
-      if (!content) {
-        console.log("[agent] memory: nothing new");
-        return;
-      }
+      if (!content) return [];
 
-      const parsed = JSON.parse(content) as {
-        operations?: { op?: unknown; id?: unknown; username?: unknown; content?: unknown }[];
-      };
-      let stored = 0;
-
-      for (const operation of parsed.operations ?? []) {
-        if (operation.op === "delete" || operation.op === "replace") {
-          const current = typeof operation.id === "string" ? active.get(operation.id) : undefined;
-          const owner = humans.find((person) => person.id === current?.userId);
-          if (!current || !owner) continue;
-
-          if (operation.op === "delete") {
-            await this.memories.supersede(current.id);
-            active.delete(current.id);
-            stored += 1;
-            console.log(`[agent] memory: forgot ${owner.name}: ${current.content}`);
-            continue;
-          }
-
-          const named = typeof operation.username === "string" ? operation.username.trim().toLowerCase() : "";
-          if (!named || named !== owner.username?.toLowerCase()) continue;
-          if (typeof operation.content !== "string") continue;
-          const contentText = operation.content.trim();
-          if (!contentText || contentText.length > MEMORY_MAX) continue;
-          if (contentText.toLowerCase() === current.content.trim().toLowerCase()) continue;
-          await this.memories.supersede(current.id);
-          active.delete(current.id);
-          const created = await this.memories.create(owner.id, contentText, visibility, humanIds, current.id);
-          active.set(created.id, {
-            id: created.id,
-            userId: owner.id,
-            content: contentText,
-            visibility,
-            audienceIds: humanIds,
-          });
-          stored += 1;
-          console.log(`[agent] memory: ${owner.name}: ${contentText}`);
-          continue;
-        }
-
-        if (operation.op !== "add") continue;
-        if (typeof operation.username !== "string" || typeof operation.content !== "string") continue;
-        const contentText = operation.content.trim();
-        if (!contentText || contentText.length > MEMORY_MAX) continue;
-        const person = humans.find(
-          (candidate) => candidate.username?.toLowerCase() === operation.username?.toString().toLowerCase(),
-        );
-        if (!person) continue;
-        const key = memoryKey(person.id, contentText, visibility, humanIds);
-        const duplicate = [...active.values()].some(
-          (memory) => memoryKey(memory.userId, memory.content, memory.visibility, memory.audienceIds) === key,
-        );
-        if (duplicate) continue;
-        const created = await this.memories.create(person.id, contentText, visibility, humanIds);
-        active.set(created.id, {
-          id: created.id,
-          userId: person.id,
-          content: contentText,
-          visibility,
-          audienceIds: humanIds,
-        });
-        stored += 1;
-        console.log(`[agent] memory: ${person.name}: ${contentText}`);
-      }
-
-      if (stored === 0) console.log("[agent] memory: nothing new");
+      const parsed = JSON.parse(content) as { operations?: MemoryOperation[] };
+      return parsed.operations ?? [];
     } catch (error) {
       console.error("[agent] memory request failed", error);
       throw error;
@@ -298,10 +210,6 @@ function hearable(
   if (memory.visibility === "PRIVATE") return humanIds.length === 1 && humanIds[0] === subjectId;
   const allowed = new Set(memory.audience.map((person) => person.userId));
   return humanIds.every((id) => allowed.has(id));
-}
-
-function memoryKey(userId: string, content: string, visibility: string, audienceIds: string[]) {
-  return `${userId}:${visibility}:${[...audienceIds].sort().join(",")}:${content.trim().toLowerCase()}`;
 }
 
 function chatMessage(name: string, kind: "HUMAN" | "AGENT", body: string) {
@@ -323,4 +231,4 @@ function plainReply(value: unknown) {
   return reply;
 }
 
-export const agent = new Agent(userRepository, memoryRepository);
+export const agent = new Agent(userRepository);

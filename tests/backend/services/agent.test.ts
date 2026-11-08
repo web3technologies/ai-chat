@@ -9,7 +9,6 @@ vi.mock("openai", () => ({
   },
 }));
 
-import { MemoryRepository } from "@/backend/repositories/memory";
 import { UserRepository } from "@/backend/repositories/user";
 import { Agent } from "@/backend/services/agent/agent";
 import { instructions } from "@/backend/services/agent/prompt";
@@ -92,7 +91,7 @@ describe("Agent", () => {
       }),
     },
   };
-  const agent = new Agent(new UserRepository(db as never), new MemoryRepository(db as never));
+  const agent = new Agent(new UserRepository(db as never));
   const previousKey = process.env.OPENAI_API_KEY;
 
   beforeEach(() => {
@@ -111,7 +110,7 @@ describe("Agent", () => {
     delete process.env.OPENAI_API_KEY;
     await expect(agent.consider([])).resolves.toBe(false);
     await expect(agent.reply([], [])).resolves.toBeNull();
-    await agent.remember(room([{ name: "Sam", content: "likes pizza" }]), []);
+    await expect(agent.remember(room([{ name: "Sam", content: "likes pizza" }]), [])).resolves.toEqual([]);
     expect(decide).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(db.memory.create).not.toHaveBeenCalled();
@@ -204,87 +203,23 @@ describe("Agent", () => {
     await expect(agent.reply([message("Sam", "HUMAN", "Agent, what is 17 times 4?")], [])).resolves.toBeNull();
   });
 
-  it("stores a new fact and skips duplicates, unknown people, and an empty room", async () => {
-    await agent.remember([], []);
+  it("returns the model's memory operations and shows the known facts", async () => {
+    await expect(agent.remember([], [])).resolves.toEqual([]);
     expect(create).not.toHaveBeenCalled();
 
-    create.mockResolvedValue(
-      completion(
-        JSON.stringify({
-          operations: [
-            { op: "add", id: "", username: "sam", content: " likes pizza " },
-            { op: "add", id: "", username: "sam", content: "Likes Pizza" },
-            { op: "add", id: "", username: "missing", content: "lives on the moon" },
-          ],
-        }),
-      ),
-    );
-    await agent.remember(
-      [
-        {
-          user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] },
-        },
-      ],
-      [message("Sam", "HUMAN", "I like pizza")],
-    );
-
-    expect(memories).toEqual([
-      {
-        id: "memory-1",
-        status: "ACTIVE",
-        userId: "user-sam",
-        content: "likes pizza",
-        visibility: "PRIVATE",
-        audience: { create: [{ userId: "user-sam" }] },
-      },
-    ]);
-  });
-
-  it("replaces a fact the person changed and deletes one they took back", async () => {
-    memories.push({
-      id: "memory-pizza",
-      userId: "user-sam",
-      content: "likes pizza",
-      visibility: "PRIVATE",
-      status: "ACTIVE",
-      audience: { create: [{ userId: "user-sam" }] },
-    });
+    const operations = [
+      { op: "add", id: "", username: "sam", content: " likes pizza " },
+      { op: "add", id: "", username: "sam", content: "Likes Pizza" },
+      { op: "add", id: "", username: "missing", content: "lives on the moon" },
+    ];
+    create.mockResolvedValue(completion(JSON.stringify({ operations })));
     const room = [{ user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN" as const, memories: [] } }];
 
-    create.mockResolvedValue(
-      completion(
-        JSON.stringify({
-          operations: [{ op: "replace", id: "memory-pizza", username: "sam", content: "hates pizza" }],
-        }),
-      ),
-    );
-    await agent.remember(room, [message("Sam", "HUMAN", "I hate pizza")]);
-
-    expect(memories.map(({ id, status, content, replacesId }) => ({ id, status, content, replacesId }))).toEqual([
-      { id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza", replacesId: undefined },
-      { id: "memory-2", status: "ACTIVE", content: "hates pizza", replacesId: "memory-pizza" },
-    ]);
-
-    memories.splice(0, memories.length, {
-      id: "memory-pizza",
-      userId: "user-sam",
-      content: "likes pizza",
-      visibility: "PRIVATE",
-      status: "ACTIVE",
-      audience: { create: [{ userId: "user-sam" }] },
-    });
-    create.mockResolvedValue(
-      completion(
-        JSON.stringify({
-          operations: [{ op: "delete", id: "memory-pizza", username: "", content: "" }],
-        }),
-      ),
-    );
-    await agent.remember(room, [message("Sam", "HUMAN", "Never mind about pizza")]);
-
-    expect(memories).toEqual([
-      expect.objectContaining({ id: "memory-pizza", status: "SUPERSEDED", content: "likes pizza" }),
-    ]);
+    await expect(
+      agent.remember(room, [message("Sam", "HUMAN", "I like pizza")], [{ id: "memory-1", username: "sam", content: "likes tacos" }]),
+    ).resolves.toEqual(operations);
+    expect(create.mock.calls[0][0].messages[1].content).toContain("Known facts:\nmemory-1 sam: likes tacos");
+    expect(db.memory.create).not.toHaveBeenCalled();
   });
 
   it("shares a fact with the people in the room and keeps a private fact out of a larger room", async () => {
@@ -295,23 +230,15 @@ describe("Agent", () => {
         }),
       ),
     );
-    await agent.remember(
-      [
-        { user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] } },
-        { user: { id: "user-jordan", username: "jordan", name: "Jordan", kind: "HUMAN", memories: [] } },
-      ],
-      [message("Sam", "HUMAN", "I live in Austin")],
-    );
-    expect(memories).toEqual([
-      {
-        id: "memory-1",
-        status: "ACTIVE",
-        userId: "user-sam",
-        content: "lives in Austin",
-        visibility: "PARTICIPANTS",
-        audience: { create: [{ userId: "user-sam" }, { userId: "user-jordan" }] },
-      },
-    ]);
+    await expect(
+      agent.remember(
+        [
+          { user: { id: "user-sam", username: "sam", name: "Sam", kind: "HUMAN", memories: [] } },
+          { user: { id: "user-jordan", username: "jordan", name: "Jordan", kind: "HUMAN", memories: [] } },
+        ],
+        [message("Sam", "HUMAN", "I live in Austin")],
+      ),
+    ).resolves.toEqual([{ op: "add", id: "", username: "sam", content: "lives in Austin" }]);
 
     create.mockResolvedValue(completion(JSON.stringify({ reply: "Austin" })));
     const sam = {
