@@ -1,5 +1,7 @@
 # User Chat App
 
+![AI Chat system diagram](docs/AIChat%20System%20Diagram.png)
+
 ## Project requirements
 
 - Any number of users can exist.
