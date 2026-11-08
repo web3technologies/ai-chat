@@ -1,16 +1,17 @@
-import { CHAT_TOPIC, kafkaClient } from "@/backend/kafka/client";
+import { CHAT_TOPIC, ensureChatTopic, kafkaClient } from "@/backend/kafka/client";
 import type { Producer } from "kafkajs";
 
 export class ChatProducer {
   private producer: Producer | null = null;
   private connected = false;
+  private topicReady = false;
 
   async produce(chatId: string, messageId: string) {
     try {
       const producer = await this.ensure();
       await producer.send({
         topic: CHAT_TOPIC,
-        messages: [{ value: JSON.stringify({ chatId, messageId }) }],
+        messages: [{ key: chatId, value: JSON.stringify({ chatId, messageId }) }],
       });
     } catch (error) {
       console.error("[kafka] produce failed", error);
@@ -24,6 +25,10 @@ export class ChatProducer {
       await this.producer.connect();
       this.connected = true;
     }
+    if (!this.topicReady) {
+      await ensureChatTopic();
+      this.topicReady = true;
+    }
     return this.producer;
   }
 
@@ -31,6 +36,7 @@ export class ChatProducer {
     const producer = this.producer;
     this.producer = null;
     this.connected = false;
+    this.topicReady = false;
     if (!producer) return;
     try {
       await producer.disconnect();
