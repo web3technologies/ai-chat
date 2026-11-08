@@ -228,6 +228,7 @@ export class Agent {
       if (stored === 0) console.log("[agent] memory: nothing new");
     } catch (error) {
       console.error("[agent] memory request failed", error);
+      throw error;
     }
   }
 }

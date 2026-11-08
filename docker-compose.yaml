@@ -64,13 +64,32 @@ services:
     ports:
       - "3000:3000"
 
-  consumer:
+  chat-consumer:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     working_dir: /app
-    entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/run.ts"]
+    entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/chat/run.ts"]
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      KAFKA_BROKERS: kafka:9092
+
+  memories-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/memories/run.ts"]
     depends_on:
       db:
         condition: service_healthy

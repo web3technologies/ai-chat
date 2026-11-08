@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma generate && prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "consume": "node --conditions=react-server --import tsx src/backend/consumers/run.ts",
+    "consume": "node --conditions=react-server --import tsx src/backend/consumers/chat/run.ts",
+    "consume:memories": "node --conditions=react-server --import tsx src/backend/consumers/memories/run.ts",
     "realtime": "node --conditions=react-server --import tsx src/backend/realtime/run.ts",
     "db:seed": "tsx scripts/seedUsers.ts",
     "db:clear-chats": "tsx scripts/clearChats.ts"

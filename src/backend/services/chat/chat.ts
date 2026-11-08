@@ -112,13 +112,21 @@ export class ChatService {
       const body = await this.assistant.reply(chat.messages, chat.members);
       if (!body) return null;
 
-      await this.assistant.remember(chat.members, chat.messages);
       const created = await this.chats.saveMessage(chatId, assistant.id, body);
       if (!created) return null;
       return this.toMessage(created);
     } catch {
       return null;
     }
+  }
+
+  async rememberMessage(chatId: string, messageId: string) {
+    const chat = await this.chats.findForAgent(chatId);
+    if (!chat) return;
+    const index = chat.messages.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    if (chat.messages[index]?.author.kind !== "HUMAN") return;
+    await this.assistant.remember(chat.members, chat.messages.slice(0, index + 1));
   }
 
   private async createInput(request: Request, userId: string) {
