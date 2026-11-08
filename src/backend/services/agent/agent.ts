@@ -8,27 +8,36 @@ import type { AgentMember, AgentMessage } from "@/backend/services/agent/types";
 
 
 export class Agent {
+
+  private readonly aiClient: OpenAI
+  
   constructor(
     private readonly users: UserRepository,
-    private readonly memories: MemoryRepository,
-  ) {}
+    private readonly memories: MemoryRepository
+  ) {
+    this.users = users
+    this.memories = memories
+    this.aiClient = this.getAIClient()
+  }
 
   user() {
     return this.users.ensureAgent();
   }
 
-  async consider(messages: AgentMessage[]): Promise<boolean> {
+  getAIClient(): OpenAI{
     if (!process.env.OPENAI_API_KEY) {
       console.log("[agent] skipped: OPENAI_API_KEY is not set");
-      return false;
+      throw Error("Agent client not initilialized")
     }
+    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+
+  async consider(messages: AgentMessage[]): Promise<boolean> {
 
     const latest = messages.at(-1);
     if (!latest || latest.author.kind !== "HUMAN") return false;
-
     try {
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const decision = await client.decisions.create({
+      const decision = await this.aiClient.decisions.create({
         model: "gpt-6-luna",
         input: messages.map((message) => `${oneLine(message.author.name)}: ${oneLine(message.body)}`).join("\n"),
         questions: [
@@ -55,10 +64,6 @@ export class Agent {
   }
 
   async reply(messages: AgentMessage[], members: AgentMember[]): Promise<string | null> {
-    if (!process.env.OPENAI_API_KEY) {
-      console.log("[agent] skipped: OPENAI_API_KEY is not set");
-      return null;
-    }
 
     const humanIds = members.flatMap((member) => (member.user.kind === "HUMAN" ? [member.user.id] : []));
     const memories = members.flatMap((member) =>
@@ -82,8 +87,7 @@ export class Agent {
       : "None";
 
     try {
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const response = await client.chat.completions.create({
+      const response = await this.aiClient.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: instructions },
