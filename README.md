@@ -17,7 +17,7 @@ Copy `.env.example` to `.env` and set `OPENAI_API_KEY`.
 Sign in as `sam` with password `password`. jordan and alex use the same password.
 
 > [!IMPORTANT]
-> **Address the agent by name to get a reply.** It answers that message only, and stays quiet while people talk to each other. Try `Agent, where should we go get food?`
+> **The agent answers when you address it, and when you continue its last reply.** A correction like "nope, try again" counts. It stays quiet while people talk to each other. Try `Agent, where should we go get food?`
 
 ### Development
 

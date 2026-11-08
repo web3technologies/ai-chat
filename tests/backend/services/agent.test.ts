@@ -120,7 +120,7 @@ describe("Agent", () => {
           type: "predicate",
           name: "should_reply",
           instructions:
-            "The latest message is a question or request for the agent named Agent, and the agent should answer it.",
+            "The latest message is for the agent named Agent. Count a question or request that names the agent, and a follow-up to the agent's previous message, such as a correction, a confirmation, or try again, even when the name is absent. People talking only to each other are not for the agent.",
         },
       ],
     });
