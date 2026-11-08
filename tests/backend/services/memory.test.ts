@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChatRepository } from "@/backend/repositories/chat";
 import { MemoryRepository } from "@/backend/repositories/memory";
+import type { Agent } from "@/backend/services/agent/agent";
 import { MemoryService } from "@/backend/services/memory/memory";
 
 describe("MemoryService", () => {
@@ -24,9 +26,19 @@ describe("MemoryService", () => {
       }),
     },
   };
-  const service = new MemoryService(new MemoryRepository(db as never));
+  const findForAgent = vi.fn(async () => null as Awaited<ReturnType<ChatRepository["findForAgent"]>>);
+  const assistant = { remember: vi.fn(async () => undefined) };
+  const service = new MemoryService(
+    new MemoryRepository(db as never),
+    { findForAgent } as unknown as ChatRepository,
+    assistant as unknown as Agent,
+  );
 
   beforeEach(() => {
+    findForAgent.mockReset();
+    findForAgent.mockResolvedValue(null);
+    assistant.remember.mockReset();
+    assistant.remember.mockResolvedValue(undefined);
     rows.splice(0, rows.length, {
       id: "m1",
       userId: "sam",
@@ -67,5 +79,28 @@ describe("MemoryService", () => {
     });
     await expect(service.remove("sam", "m1")).resolves.toEqual({ ok: true });
     expect(rows).toEqual([]);
+  });
+
+  it("remembers the transcript through a human message and skips an agent message", async () => {
+    const human = {
+      id: "message-human",
+      body: "I like tacos",
+      author: { name: "Sam", username: "sam", kind: "HUMAN" as const },
+    };
+    const chat = {
+      members: [{ userId: "me", user: { id: "me", name: "Sam", username: "sam", kind: "HUMAN", memories: [] } }],
+      messages: [human, { id: "message-agent", body: "Tacos it is", author: { kind: "AGENT" as const } }],
+    };
+    findForAgent.mockImplementation(async (chatId: string) => (chatId === "chat-1" ? chat : null));
+
+    await service.rememberMessage("chat-1", "message-agent");
+    await service.rememberMessage("chat-1", "missing");
+    await service.rememberMessage("missing", "message-human");
+    expect(assistant.remember).not.toHaveBeenCalled();
+
+    await service.rememberMessage("chat-1", "message-human");
+
+    expect(assistant.remember).toHaveBeenCalledOnce();
+    expect(assistant.remember).toHaveBeenCalledWith(chat.members, [human]);
   });
 });

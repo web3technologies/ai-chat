@@ -1,6 +1,8 @@
 import "server-only";
 import { MEMORY_MAX } from "@/backend/limits";
+import { chatRepository, type ChatRepository } from "@/backend/repositories/chat";
 import { memoryRepository, type MemoryRepository } from "@/backend/repositories/memory";
+import { agent, type Agent } from "@/backend/services/agent/agent";
 
 export type MemoryView = {
   id: string;
@@ -10,7 +12,11 @@ export type MemoryView = {
 };
 
 export class MemoryService {
-  constructor(private readonly memories: MemoryRepository) {}
+  constructor(
+    private readonly memories: MemoryRepository,
+    private readonly chats: ChatRepository,
+    private readonly assistant: Agent,
+  ) {}
 
   list(userId: string) {
     return this.memories.listForUser(userId);
@@ -35,6 +41,15 @@ export class MemoryService {
     await this.memories.remove(id);
     return { ok: true as const };
   }
+
+  async rememberMessage(chatId: string, messageId: string) {
+    const chat = await this.chats.findForAgent(chatId);
+    if (!chat) return;
+    const index = chat.messages.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    if (chat.messages[index]?.author.kind !== "HUMAN") return;
+    await this.assistant.remember(chat.members, chat.messages.slice(0, index + 1));
+  }
 }
 
-export const memoryService = new MemoryService(memoryRepository);
+export const memoryService = new MemoryService(memoryRepository, chatRepository, agent);

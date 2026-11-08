@@ -1,8 +1,8 @@
 import { CHAT_TOPIC, MEMORY_GROUP, kafkaClient } from "@/backend/kafka/client";
-import { chatService, type ChatService } from "@/backend/services/chat/chat";
+import { memoryService, type MemoryService } from "@/backend/services/memory/memory";
 
 export class MemoryConsumer {
-  constructor(private readonly chats: ChatService) {}
+  constructor(private readonly memories: MemoryService) {}
 
   async consume() {
     const consumer = kafkaClient().consumer({ groupId: MEMORY_GROUP });
@@ -22,7 +22,7 @@ export class MemoryConsumer {
         if (typeof parsed.chatId !== "string" || !parsed.chatId) return;
         if (typeof parsed.messageId !== "string" || !parsed.messageId) return;
         try {
-          await this.chats.rememberMessage(parsed.chatId, parsed.messageId);
+          await this.memories.rememberMessage(parsed.chatId, parsed.messageId);
         } catch (error) {
           console.error("[kafka] memory consume failed", error);
           throw error;
@@ -32,5 +32,5 @@ export class MemoryConsumer {
   }
 }
 
-const memoryConsumer = new MemoryConsumer(chatService);
+const memoryConsumer = new MemoryConsumer(memoryService);
 export default memoryConsumer;

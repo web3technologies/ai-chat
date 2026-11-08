@@ -120,15 +120,6 @@ export class ChatService {
     }
   }
 
-  async rememberMessage(chatId: string, messageId: string) {
-    const chat = await this.chats.findForAgent(chatId);
-    if (!chat) return;
-    const index = chat.messages.findIndex((message) => message.id === messageId);
-    if (index < 0) return;
-    if (chat.messages[index]?.author.kind !== "HUMAN") return;
-    await this.assistant.remember(chat.members, chat.messages.slice(0, index + 1));
-  }
-
   private async createInput(request: Request, userId: string) {
     const record = await this.jsonRecord(request);
     const kind = chatKind(record?.kind);

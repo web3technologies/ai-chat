@@ -283,46 +283,6 @@ describe("ChatService", () => {
     expect(assistant.remember).not.toHaveBeenCalled();
   });
 
-  it("remembers the transcript through a human message and skips an agent message", async () => {
-    chats.push({
-      id: "chat-1",
-      kind: "DM",
-      name: null,
-      members: [member("me"), member("agent")],
-      messages: [
-        {
-          id: "message-human",
-          chatId: "chat-1",
-          body: "I like tacos",
-          createdAt: new Date("2026-11-08T12:00:00Z"),
-          authorId: "me",
-          author: { name: "Sam", username: "sam", kind: "HUMAN" },
-        },
-        {
-          id: "message-agent",
-          chatId: "chat-1",
-          body: "Tacos it is",
-          createdAt: new Date("2026-11-08T12:00:01Z"),
-          authorId: "agent",
-          author: { name: "Agent", username: "agent", kind: "AGENT" },
-        },
-      ],
-    });
-
-    await service.rememberMessage("chat-1", "message-agent");
-    await service.rememberMessage("chat-1", "missing");
-    await service.rememberMessage("missing", "message-human");
-    expect(assistant.remember).not.toHaveBeenCalled();
-
-    await service.rememberMessage("chat-1", "message-human");
-
-    expect(assistant.remember).toHaveBeenCalledOnce();
-    expect(assistant.remember).toHaveBeenCalledWith(
-      expect.any(Array),
-      [expect.objectContaining({ id: "message-human", body: "I like tacos" })],
-    );
-  });
-
   it("skips a second reply when the newest message is already from the agent", async () => {
     chats.push({
       id: "chat-1",
