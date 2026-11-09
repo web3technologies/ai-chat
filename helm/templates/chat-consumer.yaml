@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-consumer
+  labels:
+    app: chat-consumer
+spec:
+  replicas: {{ .Values.chatConsumer.replicas }}
+  selector:
+    matchLabels:
+      app: chat-consumer
+  template:
+    metadata:
+      labels:
+        app: chat-consumer
+    spec:
+      initContainers:
+        {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+      containers:
+        - name: chat-consumer
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          workingDir: /app
+          command: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/chat/run.ts"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: DATABASE_URL
+              value: {{ include "ai-chat.databaseUrl" . | quote }}
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: OPENAI_API_KEY

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatRepository } from "@/backend/repositories/chat";
 import { MemoryRepository } from "@/backend/repositories/memory";
-import type { Agent } from "@/backend/services/agent/agent";
+import type { Agent, MemoryOperation } from "@/backend/services/agent/agent";
 import { MemoryService } from "@/backend/services/memory/memory";
 
 describe("MemoryService", () => {
@@ -26,8 +26,8 @@ describe("MemoryService", () => {
       }),
     },
   };
-  const findForAgent = vi.fn(async () => null as Awaited<ReturnType<ChatRepository["findForAgent"]>>);
-  const assistant = { remember: vi.fn(async () => undefined) };
+  const findForAgent = vi.fn(async (_chatId: string) => null as Awaited<ReturnType<ChatRepository["findForAgent"]>>);
+  const assistant = { remember: vi.fn(async (): Promise<MemoryOperation[]> => []) };
   const service = new MemoryService(
     new MemoryRepository(db as never),
     { findForAgent } as unknown as ChatRepository,
@@ -91,7 +91,10 @@ describe("MemoryService", () => {
       members: [{ userId: "me", user: { id: "me", name: "Sam", username: "sam", kind: "HUMAN", memories: [] } }],
       messages: [human, { id: "message-agent", body: "Tacos it is", author: { kind: "AGENT" as const } }],
     };
-    findForAgent.mockImplementation(async (chatId: string) => (chatId === "chat-1" ? chat : null));
+    findForAgent.mockImplementation(
+      async (chatId: string) =>
+        (chatId === "chat-1" ? chat : null) as Awaited<ReturnType<ChatRepository["findForAgent"]>>,
+    );
 
     await service.rememberMessage("chat-1", "message-agent");
     await service.rememberMessage("chat-1", "missing");

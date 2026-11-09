@@ -11,8 +11,10 @@ if [ -z "${OPENAI_API_KEY:-}" ]; then
 fi
 
 cd /app
-./node_modules/.bin/prisma migrate deploy
-./node_modules/.bin/tsx scripts/seedUsers.ts
+if [ "${SKIP_MIGRATE:-}" != "1" ]; then
+  ./node_modules/.bin/prisma migrate deploy
+  ./node_modules/.bin/tsx scripts/seedUsers.ts
+fi
 
 cd /app/.next/standalone
 exec "$@"

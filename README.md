@@ -1,8 +1,8 @@
-# User Chat App
+# Agentic Chat
 
 ![AI Chat system diagram](docs/AIChat%20System%20Diagram.png)
 
-## Project requirements
+## Project features
 
 - Any number of users can exist.
 - Chats can be DMs or group chats, always containing a minimum of two users.
@@ -51,6 +51,16 @@ docker compose up --build
 
 The app listens on port 3000.
 
+### Kubernetes
+
+`pnpm dev` and Docker Compose stay available. This path runs the same image on a local k3s cluster. Traefik round-robins HTTP across two backend pods. The socket stays on port 3001. The script installs kubectl, Helm, or k3d when a command is missing. Docker has to be installed already.
+
+```bash
+./k8s.sh
+```
+
+The app listens on http://localhost:3000. Sockets stay on ws://localhost:3001.
+
 ## Architecture
 
 ### Tech stack
@@ -60,9 +70,10 @@ The app listens on port 3000.
 3. OpenAI model provider
 4. JWT auth
 5. Docker Compose
-6. Kafka
-7. WebSockets
-8. Tailwind CSS
+6. k3s and Helm
+7. Kafka
+8. WebSockets
+9. Tailwind CSS
 
 ### How it works
 

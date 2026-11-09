@@ -1,0 +1,29 @@
+image: ai-chat:local
+imagePullPolicy: IfNotPresent
+secretName: ai-chat-env
+
+backend:
+  replicas: 2
+
+# Each consumer group can use at most one pod per partition. chat.messages has 4.
+chatConsumer:
+  replicas: 1
+
+memoryConsumer:
+  replicas: 1
+
+realtime:
+  replicas: 1
+
+postgres:
+  image: postgres:17
+  user: ai
+  password: ai
+  database: ai_chat
+  storage: 1Gi
+
+kafka:
+  image: apache/kafka:3.9.1
+  clusterId: MkU3OEVBNTcwNTJENDM2Qk
+
+ingressClassName: traefik

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-consumer
+  labels:
+    app: memory-consumer
+spec:
+  replicas: {{ .Values.memoryConsumer.replicas }}
+  selector:
+    matchLabels:
+      app: memory-consumer
+  template:
+    metadata:
+      labels:
+        app: memory-consumer
+    spec:
+      initContainers:
+        {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+      containers:
+        - name: memory-consumer
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          workingDir: /app
+          command: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/memories/run.ts"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: DATABASE_URL
+              value: {{ include "ai-chat.databaseUrl" . | quote }}
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: OPENAI_API_KEY

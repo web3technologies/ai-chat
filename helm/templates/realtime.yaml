@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: realtime
+  labels:
+    app: realtime
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 3001
+      targetPort: socket
+  selector:
+    app: realtime
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realtime
+  labels:
+    app: realtime
+spec:
+  replicas: {{ .Values.realtime.replicas }}
+  selector:
+    matchLabels:
+      app: realtime
+  template:
+    metadata:
+      labels:
+        app: realtime
+    spec:
+      initContainers:
+        {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+      containers:
+        - name: realtime
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          workingDir: /app
+          command: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/realtime/run.ts"]
+          ports:
+            - name: socket
+              containerPort: 3001
+          env:
+            - name: HOME
+              value: /tmp
+            - name: DATABASE_URL
+              value: {{ include "ai-chat.databaseUrl" . | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JWT_SECRET
