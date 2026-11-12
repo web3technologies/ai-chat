@@ -11,6 +11,7 @@ vi.mock("openai", () => ({
 
 import { UserRepository } from "@/backend/repositories/user";
 import { Agent } from "@/backend/services/agent/agent";
+import { Conversation } from "@/backend/services/agent/conversation";
 import { instructions } from "@/backend/services/agent/prompt";
 
 function completion(content: string | null) {
@@ -91,7 +92,7 @@ describe("Agent", () => {
       }),
     },
   };
-  const agent = new Agent(new UserRepository(db as never));
+  const agent = new Agent(new UserRepository(db as never), new Conversation());
   const previousKey = process.env.OPENAI_API_KEY;
 
   beforeEach(() => {
@@ -106,9 +107,23 @@ describe("Agent", () => {
     else process.env.OPENAI_API_KEY = previousKey;
   });
 
+  const people = [
+    { name: "Sam", username: "sam" },
+    { name: "Jordan", username: "jordan" },
+  ];
+
   it("stays quiet and stores nothing without an API key", async () => {
     delete process.env.OPENAI_API_KEY;
     await expect(agent.consider([])).resolves.toBe(false);
+    await expect(
+      agent.consider(
+        [
+          message("Agent", "AGENT", "I don't have access to real-time weather information."),
+          message("Sam", "HUMAN", "what about historical?"),
+        ],
+        people,
+      ),
+    ).resolves.toBe(true);
     await expect(agent.reply([], [])).resolves.toBeNull();
     await expect(agent.remember(room([{ name: "Sam", content: "likes pizza" }]), [])).resolves.toEqual([]);
     expect(decide).not.toHaveBeenCalled();
@@ -116,44 +131,87 @@ describe("Agent", () => {
     expect(db.memory.create).not.toHaveBeenCalled();
   });
 
-  it("asks the decision model whether the latest message is for the agent", async () => {
-    decide.mockResolvedValue(predicate(0.91));
+  it("replies to a follow-up after the agent without a decision", async () => {
     const messages = [
-      message("Alex", "HUMAN", "Hmm agent any thoughts?"),
-      message("Agent", "AGENT", "Try a burger place."),
-      message("Sam", "HUMAN", "Agent, what time?"),
+      message("Jordan", "HUMAN", "I'm around"),
+      message("Sam", "HUMAN", "Agent whats the weather in SF"),
+      message("Agent", "AGENT", "I don't have access to real-time weather information."),
+      message("Sam", "HUMAN", "what about historical?"),
     ];
 
-    await expect(agent.consider(messages)).resolves.toBe(true);
-    expect(decide).toHaveBeenCalledWith({
+    await expect(agent.consider(messages, people)).resolves.toBe(true);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when the latest line names another person", async () => {
+    const messages = [
+      message("Agent", "AGENT", "Try the ramen place."),
+      message("Sam", "HUMAN", "Jordan, want tacos?"),
+    ];
+
+    await expect(agent.consider(messages, people)).resolves.toBe(false);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("replies without a decision when only one person has spoken recently", async () => {
+    await expect(agent.consider([message("Sam", "HUMAN", "what time?")], people)).resolves.toBe(true);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("asks the decision model when two people are talking and the line names nobody", async () => {
+    const messages = [
+      message("Sam", "HUMAN", "where should we eat?"),
+      message("Jordan", "HUMAN", "tacos?"),
+    ];
+    const call = {
       model: "gpt-6-luna",
-      input: "Alex: Hmm agent any thoughts?\nAgent: Try a burger place.\nSam: Agent, what time?",
+      input: "People: Sam, Jordan\nPrevious speaker: Sam\nTranscript:\nSam: where should we eat?\nLatest:\nJordan: tacos?",
       questions: [
         {
           type: "predicate",
           name: "should_reply",
           instructions:
-            "The latest message is for the agent named Agent. Count a question or request that names the agent, and a follow-up to the agent's previous message, such as a correction, a confirmation, or try again, even when the name is absent. People talking only to each other are not for the agent.",
+            "The latest line is for Agent because it continues Agent's earlier turn. A line between the people, including an unaddressed question to the room, is not for Agent.",
         },
       ],
-    });
+    };
+
+    decide.mockResolvedValueOnce(predicate(0.69));
+    await expect(agent.consider(messages, people)).resolves.toBe(false);
+
+    decide.mockResolvedValueOnce(predicate(0.8));
+    await expect(agent.consider(messages, people)).resolves.toBe(true);
+    expect(decide).toHaveBeenCalledWith(call);
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("stays quiet when the decision is below the threshold, refused, or unavailable", async () => {
-    decide.mockResolvedValueOnce(predicate(0.69));
-    await expect(agent.consider([message("Sam", "HUMAN", "what time?")])).resolves.toBe(false);
+  it("stays quiet when the decision is refused or unavailable", async () => {
+    const messages = [
+      message("Sam", "HUMAN", "where should we eat?"),
+      message("Jordan", "HUMAN", "tacos?"),
+    ];
 
     decide.mockResolvedValueOnce({ answers: [{ type: "refusal", name: "should_reply" }] });
-    await expect(agent.consider([message("Sam", "HUMAN", "Agent, hey")])).resolves.toBe(false);
+    await expect(agent.consider(messages, people)).resolves.toBe(false);
 
     decide.mockRejectedValueOnce(new Error("down"));
-    await expect(agent.consider([message("Sam", "HUMAN", "Agent, hey")])).resolves.toBe(false);
+    await expect(agent.consider(messages, people)).resolves.toBe(false);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("does not treat a name as a match inside a longer word", async () => {
+    decide.mockResolvedValue(predicate(0.8));
+    const messages = [
+      message("Sam", "HUMAN", "tomorrow?"),
+      message("Jordan", "HUMAN", "same place?"),
+    ];
+
+    await expect(agent.consider(messages, people)).resolves.toBe(true);
+    expect(decide).toHaveBeenCalledOnce();
   });
 
   it("stays quiet without a decision when the latest message is from the agent", async () => {
-    await expect(agent.consider([message("Agent", "AGENT", "Try a burger place.")])).resolves.toBe(false);
+    await expect(agent.consider([message("Agent", "AGENT", "Try a burger place.")], people)).resolves.toBe(false);
     expect(decide).not.toHaveBeenCalled();
   });
 

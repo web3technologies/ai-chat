@@ -3,6 +3,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+restart=0
+for arg in "$@"; do
+  case "$arg" in
+    --restart) restart=1 ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Usage: ./k8s.sh [--restart]" >&2
+      exit 1
+      ;;
+  esac
+done
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required." >&2
   exit 1
@@ -69,6 +81,13 @@ kubectl create secret generic ai-chat-env \
   --dry-run=client -o yaml | kubectl apply -f -
 
 helm upgrade --install ai-chat ./helm --wait --timeout 15m
+
+# The image tag stays ai-chat:local, so a chart that did not change leaves old pods running.
+if [[ "$restart" -eq 1 ]]; then
+  deployments=(backend chat-consumer memory-consumer realtime)
+  kubectl rollout restart "${deployments[@]/#/deployment/}"
+  kubectl rollout status "${deployments[@]/#/deployment/}" --timeout=15m
+fi
 
 echo "App: http://localhost:3000"
 echo "Sockets: ws://localhost:3001"

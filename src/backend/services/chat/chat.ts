@@ -106,7 +106,10 @@ export class ChatService {
         await this.chats.addMember(chatId, assistant.id);
       }
 
-      const shouldReply = await this.assistant.consider(chat.messages);
+      const humans = chat.members.flatMap((member) =>
+        member.user.kind === "HUMAN" ? [{ name: member.user.name, username: member.user.username }] : [],
+      );
+      const shouldReply = await this.assistant.consider(chat.messages, humans);
       if (!shouldReply) return null;
 
       const body = await this.assistant.reply(chat.messages, chat.members);

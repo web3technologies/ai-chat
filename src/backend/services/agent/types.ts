@@ -4,6 +4,8 @@ export type AgentAuthor = {
   kind: "HUMAN" | "AGENT";
 };
 
+export type RoomPerson = Pick<AgentAuthor, "name" | "username">;
+
 export type AgentMessage = {
   body: string;
   author: AgentAuthor;
