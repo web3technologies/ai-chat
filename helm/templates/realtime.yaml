@@ -42,6 +42,8 @@ spec:
           env:
             - name: HOME
               value: /tmp
+            - name: REALTIME_PORT
+              value: "3001"
             - name: DATABASE_URL
               value: {{ include "ai-chat.directUrl" . | quote }}
             - name: JWT_SECRET

@@ -36,7 +36,13 @@ export function publish(clients: LiveSocket[], raw: string) {
   }
 }
 
-export async function startRealtime(port = Number(process.env.REALTIME_PORT ?? 3001)) {
+function listenPort() {
+  const parsed = Number(process.env.REALTIME_PORT);
+  if (Number.isInteger(parsed) && parsed > 0 && parsed < 65536) return parsed;
+  return 3001;
+}
+
+export async function startRealtime(port = listenPort()) {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
 
