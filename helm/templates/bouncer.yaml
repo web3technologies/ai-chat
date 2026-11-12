@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bouncer
+  labels:
+    app: bouncer
+spec:
+  ports:
+    - port: 5432
+      targetPort: bouncer
+  selector:
+    app: bouncer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bouncer
+  labels:
+    app: bouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bouncer
+  template:
+    metadata:
+      labels:
+        app: bouncer
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "waiting for postgres"
+                sleep 2
+              done
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+      containers:
+        - name: bouncer
+          image: {{ .Values.pgbouncer.image }}
+          ports:
+            - name: bouncer
+              containerPort: 5432
+          env:
+            - name: DATABASE_URL
+              value: {{ include "ai-chat.directUrl" . | quote }}
+            - name: POOL_MODE
+              value: {{ .Values.pgbouncer.poolMode | quote }}
+            - name: AUTH_TYPE
+              value: scram-sha-256
+            - name: MAX_CLIENT_CONN
+              value: {{ .Values.pgbouncer.maxClientConn | quote }}
+            - name: DEFAULT_POOL_SIZE
+              value: {{ .Values.pgbouncer.defaultPoolSize | quote }}
+            - name: ADMIN_USERS
+              value: {{ .Values.postgres.user | quote }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "localhost", "-p", "5432"]
+            periodSeconds: 5

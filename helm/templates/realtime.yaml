@@ -43,7 +43,7 @@ spec:
             - name: HOME
               value: /tmp
             - name: DATABASE_URL
-              value: {{ include "ai-chat.databaseUrl" . | quote }}
+              value: {{ include "ai-chat.directUrl" . | quote }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

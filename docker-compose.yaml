@@ -15,6 +15,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  bouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      ADMIN_USERS: ai
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: apache/kafka:3.9.1
@@ -53,10 +72,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      bouncer:
+        condition: service_healthy
       kafka:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      DATABASE_URL: postgresql://ai:ai@bouncer:5432/ai_chat
+      DIRECT_URL: postgresql://ai:ai@db:5432/ai_chat
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SEED_PASSWORD: ${SEED_PASSWORD:-password}
@@ -72,14 +94,14 @@ services:
     working_dir: /app
     entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/chat/run.ts"]
     depends_on:
-      db:
+      bouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
       backend:
         condition: service_started
     environment:
-      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      DATABASE_URL: postgresql://ai:ai@bouncer:5432/ai_chat
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       KAFKA_BROKERS: kafka:9092
 
@@ -91,14 +113,14 @@ services:
     working_dir: /app
     entrypoint: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/memories/run.ts"]
     depends_on:
-      db:
+      bouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
       backend:
         condition: service_started
     environment:
-      DATABASE_URL: postgresql://ai:ai@db:5432/ai_chat
+      DATABASE_URL: postgresql://ai:ai@bouncer:5432/ai_chat
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       KAFKA_BROKERS: kafka:9092
 

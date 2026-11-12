@@ -16,6 +16,7 @@ spec:
     spec:
       initContainers:
         {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+        {{- include "ai-chat.waitForBouncer" . | nindent 8 }}
       containers:
         - name: chat-consumer
           image: {{ .Values.image }}

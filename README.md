@@ -43,7 +43,7 @@ pnpm realtime
 
 ### Docker Compose
 
-Start Postgres, Kafka, the app, the agent consumer, the memory consumer, and the realtime socket. The app container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above. Both consumers use the same image and read `chat.messages`. The realtime service listens on port 3001.
+Start Postgres, PgBouncer, Kafka, the app, the agent consumer, the memory consumer, and the realtime socket. The app container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above. The app and both consumers query Postgres through PgBouncer. Migrations and the realtime socket connect to Postgres directly. Both consumers use the same image and read `chat.messages`. The realtime service listens on port 3001.
 
 ```bash
 docker compose up --build
@@ -67,13 +67,14 @@ The app listens on http://localhost:3000. Sockets stay on ws://localhost:3001.
 
 1. Next JS Stack
 2. Postgres DB
-3. OpenAI model provider
-4. JWT auth
-5. Docker Compose
-6. k3s and Helm
-7. Kafka
-8. WebSockets
-9. Tailwind CSS
+3. PgBouncer
+4. OpenAI model provider
+5. JWT auth
+6. Docker Compose
+7. k3s and Helm
+8. Kafka
+9. WebSockets
+10. Tailwind CSS
 
 ### How it works
 

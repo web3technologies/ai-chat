@@ -22,6 +22,12 @@ postgres:
   database: ai_chat
   storage: 1Gi
 
+pgbouncer:
+  image: edoburu/pgbouncer:v1.26.1-p0
+  poolMode: transaction
+  maxClientConn: 200
+  defaultPoolSize: 20
+
 kafka:
   image: apache/kafka:3.9.1
   clusterId: MkU3OEVBNTcwNTJENDM2Qk

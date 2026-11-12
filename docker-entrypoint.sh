@@ -12,8 +12,9 @@ fi
 
 cd /app
 if [ "${SKIP_MIGRATE:-}" != "1" ]; then
-  ./node_modules/.bin/prisma migrate deploy
-  ./node_modules/.bin/tsx scripts/seedUsers.ts
+  migrate_url="${DIRECT_URL:-$DATABASE_URL}"
+  DATABASE_URL="$migrate_url" ./node_modules/.bin/prisma migrate deploy
+  DATABASE_URL="$migrate_url" ./node_modules/.bin/tsx scripts/seedUsers.ts
 fi
 
 cd /app/.next/standalone
