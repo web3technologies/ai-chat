@@ -108,3 +108,14 @@ enum MemoryStatus {
   ACTIVE
   SUPERSEDED
 }
+
+model Outbox {
+  id          String    @id @default(cuid())
+  chatId      String
+  messageId   String    @unique
+  payload     String
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([publishedAt, createdAt])
+}

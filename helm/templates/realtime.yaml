@@ -30,6 +30,8 @@ spec:
     spec:
       initContainers:
         {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+        {{- include "ai-chat.waitForReplica" . | nindent 8 }}
+        {{- include "ai-chat.waitForRedis" . | nindent 8 }}
       containers:
         - name: realtime
           image: {{ .Values.image }}
@@ -44,8 +46,10 @@ spec:
               value: /tmp
             - name: REALTIME_PORT
               value: "3001"
-            - name: DATABASE_URL
-              value: {{ include "ai-chat.directUrl" . | quote }}
+            - name: DATABASE_READ_URL
+              value: {{ include "ai-chat.readUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "ai-chat.redisUrl" . | quote }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

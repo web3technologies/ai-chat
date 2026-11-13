@@ -34,6 +34,18 @@ spec:
           ports:
             - name: postgres
               containerPort: 5432
+          command:
+            - postgres
+            - -c
+            - wal_level=replica
+            - -c
+            - max_wal_senders=10
+            - -c
+            - max_replication_slots=10
+            - -c
+            - hot_standby=on
+            - -c
+            - hba_file=/etc/postgres/pg_hba.conf
           env:
             - name: POSTGRES_USER
               value: {{ .Values.postgres.user | quote }}
@@ -48,6 +60,13 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            - name: hba
+              mountPath: /etc/postgres/pg_hba.conf
+              subPath: pg_hba.conf
+      volumes:
+        - name: hba
+          configMap:
+            name: postgres-hba
   volumeClaimTemplates:
     - metadata:
         name: data

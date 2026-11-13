@@ -15,11 +15,23 @@ memoryConsumer:
 realtime:
   replicas: 1
 
+relay:
+  replicas: 1
+
+fanout:
+  replicas: 1
+
+redis:
+  image: redis:7-alpine
+
 postgres:
   image: postgres:17
   user: ai
   password: ai
   database: ai_chat
+  storage: 1Gi
+
+postgresRead:
   storage: 1Gi
 
 pgbouncer:

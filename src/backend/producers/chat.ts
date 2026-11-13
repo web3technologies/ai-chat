@@ -6,16 +6,17 @@ export class ChatProducer {
   private connected = false;
   private topicReady = false;
 
-  async produce(chatId: string, messageId: string) {
+  async publish(chatId: string, payload: string) {
     try {
       const producer = await this.ensure();
       await producer.send({
         topic: CHAT_TOPIC,
-        messages: [{ key: chatId, value: JSON.stringify({ chatId, messageId }) }],
+        messages: [{ key: chatId, value: payload }],
       });
     } catch (error) {
-      console.error("[kafka] produce failed", error);
+      console.error("[kafka] publish failed", error);
       await this.stop();
+      throw error;
     }
   }
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma } from "@/backend/db/prisma/generated/client";
-import prisma from "@/backend/db/prisma/client";
+import prisma, { prismaRead } from "@/backend/db/prisma/client";
 
 const memberSelect = {
   id: true,
@@ -83,6 +83,28 @@ export class ChatRepository {
     });
   }
 
+  chatIdsForMember(userId: string) {
+    return this.db.chatMember.findMany({
+      where: { userId },
+      select: { chatId: true },
+    });
+  }
+
+  listUnpublished(limit = 50) {
+    return this.db.outbox.findMany({
+      where: { publishedAt: null },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  }
+
+  markPublished(id: string, publishedAt = new Date()) {
+    return this.db.outbox.update({
+      where: { id },
+      data: { publishedAt },
+    });
+  }
+
   addMember(chatId: string, userId: string) {
     return this.db.chatMember.create({ data: { chatId, userId } });
   }
@@ -128,6 +150,7 @@ export class ChatRepository {
         });
         const payload = JSON.stringify({
           chatId,
+          messageId: created.id,
           memberIds: members.map((member) => member.userId),
           message: {
             id: created.id,
@@ -137,8 +160,9 @@ export class ChatRepository {
             authorName: created.author.name,
           },
         });
-        // notify for wss stream
-        await tx.$executeRaw`SELECT pg_notify('chat_messages', ${payload})`;
+        await tx.outbox.create({
+          data: { chatId, messageId: created.id, payload },
+        });
         return created;
       });
     } catch (error) {
@@ -154,3 +178,4 @@ export class ChatRepository {
 }
 
 export const chatRepository = new ChatRepository(prisma);
+export const chatReads = new ChatRepository(prismaRead);

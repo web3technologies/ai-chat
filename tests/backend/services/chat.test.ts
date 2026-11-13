@@ -37,6 +37,7 @@ function request(body?: unknown, token = "signed") {
 describe("ChatService", () => {
   const users = new Map<string, StoredUser>();
   const chats: StoredChat[] = [];
+  const outboxRows: { chatId: string; messageId: string; payload: string }[] = [];
   let messageCount = 0;
 
   function member(userId: string) {
@@ -136,6 +137,12 @@ describe("ChatService", () => {
     memory: {
       findMany: vi.fn(async () => []),
     },
+    outbox: {
+      create: vi.fn(async ({ data }: { data: { chatId: string; messageId: string; payload: string } }) => {
+        outboxRows.push(data);
+        return data;
+      }),
+    },
     $executeRaw: vi.fn(async () => 0),
     $transaction: vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(db)),
   };
@@ -157,6 +164,7 @@ describe("ChatService", () => {
   beforeEach(() => {
     users.clear();
     chats.splice(0, chats.length);
+    outboxRows.splice(0, outboxRows.length);
     messageCount = 0;
     users.set("me", { id: "me", username: "sam", name: "Sam", kind: "HUMAN" });
     users.set("jordan", { id: "jordan", username: "jordan", name: "Jordan", kind: "HUMAN" });
@@ -281,6 +289,33 @@ describe("ChatService", () => {
     expect(assistant.consider).toHaveBeenCalledOnce();
     expect(assistant.reply).toHaveBeenCalledOnce();
     expect(assistant.remember).not.toHaveBeenCalled();
+    expect(outboxRows.map((row) => JSON.parse(row.payload).message.body)).toEqual([
+      "what is 17 times 4",
+      "68",
+    ]);
+  });
+
+  it("writes the live payload to the outbox in the message transaction", async () => {
+    chats.push({
+      id: "chat-1",
+      kind: "DM",
+      name: null,
+      members: [member("me"), member("jordan"), member("agent")],
+      messages: [],
+    });
+
+    const result = await service.send(request({ body: "hello" }), "chat-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(db.$transaction).toHaveBeenCalled();
+    expect(outboxRows).toHaveLength(1);
+    expect(JSON.parse(outboxRows[0].payload)).toMatchObject({
+      chatId: "chat-1",
+      messageId: result.message.id,
+      memberIds: ["me", "jordan", "agent"],
+      message: { id: result.message.id, body: "hello", authorName: "Sam" },
+    });
   });
 
   it("skips a second reply when the newest message is already from the agent", async () => {

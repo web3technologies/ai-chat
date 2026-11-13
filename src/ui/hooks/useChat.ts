@@ -49,8 +49,16 @@ export default function useChat() {
     };
   }, [loading, user]);
 
+  const socketRef = useRef<WebSocket | null>(null);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
   useEffect(() => {
     if (!selectedId) return;
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "watch", chatId: selectedId }));
+    }
     let cancelled = false;
     let version = 0;
 
@@ -74,9 +82,6 @@ export default function useChat() {
       cancelled = true;
     };
   }, [selectedId]);
-
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
 
   useEffect(() => {
     if (loading || !user) return;
@@ -131,8 +136,11 @@ export default function useChat() {
       const token = localStorage.getItem(TOKEN_KEY);
       if (!token || stopped) return;
       socket = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001");
+      socketRef.current = socket;
       socket.addEventListener("open", () => {
         socket?.send(JSON.stringify({ type: "auth", token }));
+        const open = selectedIdRef.current;
+        if (open) socket?.send(JSON.stringify({ type: "watch", chatId: open }));
       });
       socket.addEventListener("message", (event) => {
         try {
@@ -157,6 +165,7 @@ export default function useChat() {
     connect();
     return () => {
       stopped = true;
+      socketRef.current = null;
       clearTimeout(reconnectTimer);
       socket?.close();
     };

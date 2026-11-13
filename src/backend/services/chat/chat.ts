@@ -1,6 +1,6 @@
 import "server-only";
 import { GROUP_NAME_MAX, MESSAGE_MAX } from "@/backend/limits";
-import { chatRepository, type ChatRepository } from "@/backend/repositories/chat";
+import { chatReads, chatRepository, type ChatRepository } from "@/backend/repositories/chat";
 import { userRepository, type UserRepository } from "@/backend/repositories/user";
 import { Agent, agent } from "@/backend/services/agent/agent";
 import { AuthToken, authToken } from "@/backend/services/auth/token";
@@ -20,13 +20,14 @@ export class ChatService {
     private readonly users: UserRepository,
     private readonly tokens: AuthToken,
     private readonly assistant: Agent,
+    private readonly reads: ChatRepository = chats,
   ) {}
 
   async list(request: Request): Promise<{ ok: true; chats: ChatSummary[] } | ChatFailure> {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return { ok: false, reason: "unauthorized" };
 
-    const chats = await this.chats.listForMember(userId);
+    const chats = await this.reads.listForMember(userId);
 
     return { ok: true, chats: chats.map((chat) => this.toSummary(chat, userId)) };
   }
@@ -70,7 +71,7 @@ export class ChatService {
     const userId = await this.tokens.userIdFromRequest(request);
     if (!userId) return { ok: false, reason: "unauthorized" };
 
-    const chat = await this.chats.findForMember(chatId, userId);
+    const chat = await this.reads.findForMember(chatId, userId);
     if (!chat) return { ok: false, reason: "not_found" };
 
     return { ok: true, chat: this.toDetail(chat, userId) };
@@ -236,4 +237,4 @@ export class ChatService {
   }
 }
 
-export const chatService = new ChatService(chatRepository, userRepository, authToken, agent);
+export const chatService = new ChatService(chatRepository, userRepository, authToken, agent, chatReads);

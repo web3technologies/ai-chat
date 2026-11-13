@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  labels:
+    app: relay
+spec:
+  replicas: {{ .Values.relay.replicas }}
+  selector:
+    matchLabels:
+      app: relay
+  template:
+    metadata:
+      labels:
+        app: relay
+    spec:
+      initContainers:
+        {{- include "ai-chat.waitForSchema" . | nindent 8 }}
+        {{- include "ai-chat.waitForBouncer" . | nindent 8 }}
+      containers:
+        - name: relay
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          workingDir: /app
+          command: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/relay/run.ts"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: DATABASE_URL
+              value: {{ include "ai-chat.databaseUrl" . | quote }}
+            - name: KAFKA_BROKERS
+              value: kafka:9092

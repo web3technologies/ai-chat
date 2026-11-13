@@ -23,15 +23,17 @@ Sign in as `sam` with password `password`. jordan and alex use the same password
 
 ### Development
 
-Start Postgres and Kafka, then run the app locally. Copy `.env.example` to `.env` so the app reaches Kafka on `localhost:9094`. The chat consumer asks the agent after each saved human message. The memory consumer stores facts from each saved human message. The realtime process pushes each saved message to the browser.
+Start Postgres, Kafka, and Redis, then run the app locally. Copy `.env.example` to `.env` so the app reaches Kafka on `localhost:9094`. The relay publishes each saved message to Kafka. Fanout pushes those records to Redis, and the realtime process delivers them to the browser. The chat consumer asks the agent after each saved human message. The memory consumer stores facts from each saved human message. Leave `DATABASE_READ_URL` unset to read chat history from the primary.
 
 ```bash
-docker compose up db kafka -d
+docker compose up db kafka redis -d
 pnpm install
 pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 pnpm dev
+pnpm relay
+pnpm fanout
 pnpm consume
 pnpm consume:memories
 pnpm realtime
@@ -43,7 +45,7 @@ pnpm realtime
 
 ### Docker Compose
 
-Start Postgres, PgBouncer, Kafka, the app, the agent consumer, the memory consumer, and the realtime socket. The app container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above. The app and both consumers query Postgres through PgBouncer. Migrations and the realtime socket connect to Postgres directly. Both consumers use the same image and read `chat.messages`. The realtime service listens on port 3001.
+Start Postgres, a streaming replica, PgBouncer, Redis, Kafka, the app, the outbox relay, fanout, the agent consumer, the memory consumer, and the realtime socket. The app container reads `OPENAI_API_KEY` from `.env`, applies migrations, and seeds the users above. The app, the relay, and both consumers use the primary through PgBouncer. Chat list and history use the replica. The realtime socket subscribes to Redis and reads membership from the replica. The relay, fanout, and both consumers read `chat.messages`. The realtime service listens on port 3001.
 
 ```bash
 docker compose up --build
@@ -73,14 +75,15 @@ The app listens on http://localhost:3000. Sockets stay on ws://localhost:3001.
 6. Docker Compose
 7. k3s and Helm
 8. Kafka
-9. WebSockets
-10. Tailwind CSS
+9. Redis
+10. WebSockets
+11. Tailwind CSS
 
 ### How it works
 
 1. A user will sign in or sign up returning a bearer token based on JWT that is stored in the browser's local storage.
 2. A user then can create a chat with 1 or many users.
 3. The user will send a message routing through the api. A chat consumer decides whether the agent should respond. A memory consumer stores facts from each saved human message.
-4. The frontend opens a WebSocket and receives each saved message as soon as it is committed.
+4. A saved message and its outbox row commit together. The relay publishes that payload to Kafka, fanout pushes it to Redis, and the browser receives it on the WebSocket.
 5. Memories can be managed by the user.
 

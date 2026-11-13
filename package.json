@@ -14,13 +14,17 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "consume": "node --conditions=react-server --import tsx src/backend/consumers/chat/run.ts",
     "consume:memories": "node --conditions=react-server --import tsx src/backend/consumers/memories/run.ts",
+    "relay": "node --conditions=react-server --import tsx src/backend/relay/run.ts",
+    "fanout": "node --conditions=react-server --import tsx src/backend/consumers/fanout/run.ts",
     "realtime": "node --conditions=react-server --import tsx src/backend/realtime/run.ts",
+    "smoke:live": "tsx scripts/smokeLive.ts",
     "db:seed": "tsx scripts/seedUsers.ts",
     "db:clear-chats": "tsx scripts/clearChats.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "kafkajs": "^2.2.4",
     "next": "16.4.2",

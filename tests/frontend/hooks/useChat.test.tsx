@@ -123,7 +123,10 @@ describe("useChat", () => {
     const socket = FakeSocket.latest;
     if (!socket) return;
     act(() => socket.emit("open"));
-    expect(socket.sent).toEqual([JSON.stringify({ type: "auth", token: "signed" })]);
+    expect(socket.sent).toEqual([
+      JSON.stringify({ type: "auth", token: "signed" }),
+      JSON.stringify({ type: "watch", chatId: "chat-1" }),
+    ]);
 
     act(() =>
       socket.emit("message", {

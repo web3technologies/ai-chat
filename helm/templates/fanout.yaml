@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fanout
+  labels:
+    app: fanout
+spec:
+  replicas: {{ .Values.fanout.replicas }}
+  selector:
+    matchLabels:
+      app: fanout
+  template:
+    metadata:
+      labels:
+        app: fanout
+    spec:
+      initContainers:
+        {{- include "ai-chat.waitForRedis" . | nindent 8 }}
+      containers:
+        - name: fanout
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          workingDir: /app
+          command: ["node", "--conditions=react-server", "--import", "tsx", "src/backend/consumers/fanout/run.ts"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+            - name: REDIS_URL
+              value: {{ include "ai-chat.redisUrl" . | quote }}

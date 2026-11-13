@@ -5,6 +5,7 @@ process.env.KAFKAJS_NO_PARTITIONER_WARNING ??= "1";
 export const CHAT_TOPIC = "chat.messages";
 export const CHAT_GROUP = "chat-agent";
 export const MEMORY_GROUP = "chat-memory";
+export const FANOUT_GROUP = "chat-fanout";
 export const CHAT_PARTITIONS = 4;
 
 let kafka: Kafka | undefined;

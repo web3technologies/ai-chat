@@ -30,6 +30,7 @@ spec:
       initContainers:
         {{- include "ai-chat.waitForSchema" . | nindent 8 }}
         {{- include "ai-chat.waitForBouncer" . | nindent 8 }}
+        {{- include "ai-chat.waitForReplica" . | nindent 8 }}
       containers:
         - name: backend
           image: {{ .Values.image }}
@@ -44,6 +45,8 @@ spec:
               value: "1"
             - name: DATABASE_URL
               value: {{ include "ai-chat.databaseUrl" . | quote }}
+            - name: DATABASE_READ_URL
+              value: {{ include "ai-chat.readUrl" . | quote }}
             - name: KAFKA_BROKERS
               value: kafka:9092
             - name: OPENAI_API_KEY

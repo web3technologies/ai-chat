@@ -9,14 +9,9 @@ vi.mock("@/backend/services/chat/chat", () => ({
   },
 }));
 
-vi.mock("@/backend/producers/chat", () => ({
-  default: { produce: vi.fn(async () => undefined) },
-}));
-
 import { GET as listChats, POST as createChat } from "@/app/api/chats/route";
 import { GET as getChat } from "@/app/api/chats/[id]/route";
 import { POST as sendChat } from "@/app/api/chats/[id]/send/route";
-import chatProducer from "@/backend/producers/chat";
 import { chatService } from "@/backend/services/chat/chat";
 
 const chats = vi.mocked(chatService);
@@ -72,7 +67,7 @@ describe("chat routes", () => {
     await expect(response.json()).resolves.toEqual({ chat: { id: "chat-1" } });
   });
 
-  it("sends a message and publishes it for the agent", async () => {
+  it("sends a message without publishing from the route", async () => {
     chats.send.mockResolvedValue({
       ok: true,
       message,
@@ -84,6 +79,5 @@ describe("chat routes", () => {
       message: { id: "message-1", body: "hello" },
       agentMessage: null,
     });
-    expect(chatProducer.produce).toHaveBeenCalledWith("chat-1", "message-1");
   });
 });

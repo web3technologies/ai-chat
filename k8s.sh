@@ -84,7 +84,7 @@ helm upgrade --install ai-chat ./helm --wait --timeout 15m
 
 # The image tag stays ai-chat:local, so a chart that did not change leaves old pods running.
 if [[ "$restart" -eq 1 ]]; then
-  deployments=(backend chat-consumer memory-consumer realtime)
+  deployments=(backend chat-consumer memory-consumer realtime relay fanout)
   kubectl rollout restart "${deployments[@]/#/deployment/}"
   kubectl rollout status "${deployments[@]/#/deployment/}" --timeout=15m
 fi
