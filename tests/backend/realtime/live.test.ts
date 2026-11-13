@@ -22,7 +22,7 @@ describe("live socket frames", () => {
       await new Promise<void>((resolve) => sockets.once("listening", resolve));
     }
     const address = sockets.address();
-    if (typeof address === "string") throw new Error("expected a tcp port");
+    if (!address || typeof address === "string") throw new Error("expected a tcp port");
     const client = new WebSocket(`ws://127.0.0.1:${address.port}`);
     const connected = new Promise<WebSocket>((resolve) => sockets.once("connection", resolve));
     const serverSocket = await connected;
