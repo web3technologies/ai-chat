@@ -40,21 +40,6 @@ export class Agent {
       return true;
     }
 
-    if (this.conversation.namesSomeoneElse(latest.body, latest.author, humans)) {
-      console.log("[agent] decision: stay quiet (named someone else)");
-      return false;
-    }
-
-    if (this.conversation.oneHumanRecently(messages)) {
-      console.log("[agent] decision: reply (one person talking)");
-      return true;
-    }
-
-    if (this.conversation.followsAgent(messages)) {
-      console.log("[agent] decision: reply (continuing the agent)");
-      return true;
-    }
-
     const ai = this.client();
     if (!ai) return false;
     try {

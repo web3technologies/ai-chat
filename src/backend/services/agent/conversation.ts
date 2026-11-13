@@ -4,28 +4,10 @@ const RECENT_TURNS = 8;
 
 export class Conversation {
   readonly instructions =
-    "The latest line is for Agent because it continues Agent's earlier turn. A line between the people, including an unaddressed question to the room, is not for Agent.";
+    "The latest line is asking Agent a question or making a request of Agent. A follow-up to Agent's previous answer counts, even when Agent is not named. A question aimed at another person does not.";
 
   namesAgent(body: string) {
     return this.mentionsWord(body, "agent");
-  }
-
-  namesSomeoneElse(body: string, sender: RoomPerson, humans: RoomPerson[]) {
-    const key = this.personKey(sender);
-    return humans.some((person) => this.personKey(person) !== key && this.namesPerson(body, person));
-  }
-
-  oneHumanRecently(messages: AgentMessage[]) {
-    const recent = new Set(
-      messages
-        .slice(-RECENT_TURNS)
-        .flatMap((message) => (message.author.kind === "HUMAN" ? [this.personKey(message.author)] : [])),
-    );
-    return recent.size <= 1;
-  }
-
-  followsAgent(messages: AgentMessage[]) {
-    return messages.at(-2)?.author.kind === "AGENT";
   }
 
   decisionInput(messages: AgentMessage[], humans: RoomPerson[]) {
@@ -38,7 +20,7 @@ export class Conversation {
       : "None";
     const speaker = previous ? this.oneLine(previous.author.name) : "None";
     const line = latest ? `${this.oneLine(latest.author.name)}: ${this.oneLine(latest.body)}` : "None";
-    return `People: ${people}\nPrevious speaker: ${speaker}\nTranscript:\n${transcript}\nLatest:\n${line}`;
+    return `People: ${people}\nPrevious speaker: ${speaker}\n${this.recentSpeakers(messages)}\nTranscript:\n${transcript}\nLatest:\n${line}`;
   }
 
   hearable(memory: Pick<AgentMemory, "visibility" | "audience">, subjectId: string, humanIds: string[]) {
@@ -66,8 +48,18 @@ export class Conversation {
     return reply;
   }
 
-  private namesPerson(body: string, person: RoomPerson) {
-    return this.mentionsWord(body, person.name) || (person.username ? this.mentionsWord(body, person.username) : false);
+  private recentSpeakers(messages: AgentMessage[]) {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const message of messages.slice(-RECENT_TURNS)) {
+      if (message.author.kind !== "HUMAN") continue;
+      const key = this.personKey(message.author);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(this.oneLine(message.author.name));
+    }
+    if (names.length <= 1) return `Only ${names[0] ?? "one person"} has spoken recently.`;
+    return `Recent human speakers: ${names.join(", ")}.`;
   }
 
   private mentionsWord(body: string, word: string) {

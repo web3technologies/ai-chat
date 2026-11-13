@@ -112,6 +112,9 @@ describe("Agent", () => {
     { name: "Jordan", username: "jordan" },
   ];
 
+  const decisionInstructions =
+    "The latest line is asking Agent a question or making a request of Agent. A follow-up to Agent's previous answer counts, even when Agent is not named. A question aimed at another person does not.";
+
   it("stays quiet and stores nothing without an API key", async () => {
     delete process.env.OPENAI_API_KEY;
     await expect(agent.consider([])).resolves.toBe(false);
@@ -123,7 +126,8 @@ describe("Agent", () => {
         ],
         people,
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe(false);
+    await expect(agent.consider([message("Sam", "HUMAN", "Agent, what time?")], people)).resolves.toBe(true);
     await expect(agent.reply([], [])).resolves.toBeNull();
     await expect(agent.remember(room([{ name: "Sam", content: "likes pizza" }]), [])).resolves.toEqual([]);
     expect(decide).not.toHaveBeenCalled();
@@ -131,31 +135,45 @@ describe("Agent", () => {
     expect(db.memory.create).not.toHaveBeenCalled();
   });
 
-  it("replies to a follow-up after the agent without a decision", async () => {
+  it("asks the model whether a follow-up is asking the agent", async () => {
     const messages = [
       message("Jordan", "HUMAN", "I'm around"),
-      message("Sam", "HUMAN", "Agent whats the weather in SF"),
-      message("Agent", "AGENT", "I don't have access to real-time weather information."),
-      message("Sam", "HUMAN", "what about historical?"),
+      message("Agent", "AGENT", "Try some bagels."),
+      message("Sam", "HUMAN", "Alex agreed, bagels sound good. Where should we go?"),
     ];
+    decide.mockResolvedValue(predicate(0.8));
 
     await expect(agent.consider(messages, people)).resolves.toBe(true);
-    expect(decide).not.toHaveBeenCalled();
+    expect(decide).toHaveBeenCalledWith({
+      model: "gpt-6-luna",
+      input:
+        "People: Sam, Jordan\nPrevious speaker: Agent\nRecent human speakers: Jordan, Sam.\nTranscript:\nJordan: I'm around\nAgent: Try some bagels.\nLatest:\nSam: Alex agreed, bagels sound good. Where should we go?",
+      questions: [
+        {
+          type: "predicate",
+          name: "should_reply",
+          instructions: decisionInstructions,
+        },
+      ],
+    });
   });
 
-  it("stays quiet when the latest line names another person", async () => {
+  it("asks the model when the latest line names another person", async () => {
+    decide.mockResolvedValue(predicate(0.2));
     const messages = [
       message("Agent", "AGENT", "Try the ramen place."),
       message("Sam", "HUMAN", "Jordan, want tacos?"),
     ];
 
     await expect(agent.consider(messages, people)).resolves.toBe(false);
-    expect(decide).not.toHaveBeenCalled();
+    expect(decide).toHaveBeenCalledOnce();
   });
 
-  it("replies without a decision when only one person has spoken recently", async () => {
+  it("asks the model when only one person has spoken recently", async () => {
+    decide.mockResolvedValue(predicate(0.8));
     await expect(agent.consider([message("Sam", "HUMAN", "what time?")], people)).resolves.toBe(true);
-    expect(decide).not.toHaveBeenCalled();
+    expect(decide.mock.calls[0][0].input).toContain("Only Sam has spoken recently.");
+    expect(decide.mock.calls[0][0].input).toContain("Latest:\nSam: what time?");
   });
 
   it("asks the decision model when two people are talking and the line names nobody", async () => {
@@ -165,13 +183,13 @@ describe("Agent", () => {
     ];
     const call = {
       model: "gpt-6-luna",
-      input: "People: Sam, Jordan\nPrevious speaker: Sam\nTranscript:\nSam: where should we eat?\nLatest:\nJordan: tacos?",
+      input:
+        "People: Sam, Jordan\nPrevious speaker: Sam\nRecent human speakers: Sam, Jordan.\nTranscript:\nSam: where should we eat?\nLatest:\nJordan: tacos?",
       questions: [
         {
           type: "predicate",
           name: "should_reply",
-          instructions:
-            "The latest line is for Agent because it continues Agent's earlier turn. A line between the people, including an unaddressed question to the room, is not for Agent.",
+          instructions: decisionInstructions,
         },
       ],
     };
